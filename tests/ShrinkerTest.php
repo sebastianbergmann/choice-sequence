@@ -10,6 +10,7 @@
 namespace SebastianBergmann\ChoiceSequence;
 
 use const PHP_INT_MAX;
+use function array_filter;
 use function array_key_exists;
 use function array_search;
 use function array_slice;
@@ -17,9 +18,11 @@ use function array_unique;
 use function array_values;
 use function count;
 use function implode;
+use function in_array;
 use function min;
 use ArrayObject;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Small;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -31,6 +34,39 @@ use PHPUnit\Framework\TestCase;
 #[Small]
 final class ShrinkerTest extends TestCase
 {
+    /**
+     * @return array<string, array{non-negative-int, non-negative-int}>
+     */
+    public static function minimizationProvider(): array
+    {
+        return [
+            'to a small value'                      => [9, 2],
+            'to a value that a binary search finds' => [100, 50],
+        ];
+    }
+
+    /**
+     * @return array<string, array{list<non-negative-int>}>
+     */
+    public static function loweredChoiceWithoutSpansProvider(): array
+    {
+        return [
+            'last span'  => [[2, 7, 8]],
+            'first span' => [[2, 8, 9]],
+        ];
+    }
+
+    /**
+     * @return array<string, array{list<non-negative-int>}>
+     */
+    public static function raisedLaterChoiceProvider(): array
+    {
+        return [
+            'nearest later choice'      => [[1, 7, 2, 7, 1, 7]],
+            'next nearest later choice' => [[1, 7, 1, 7, 2, 7]],
+        ];
+    }
+
     public function testCountsTheAttemptsAndTheStepsThatMadeTheCounterexampleSimpler(): void
     {
         $attempts = 0;
@@ -442,6 +478,309 @@ final class ShrinkerTest extends TestCase
         $result = $shrinker->shrink(self::twoValuesWithAChoiceBetweenThem([3, 0, 4]));
 
         $this->assertSame([0, 0, 7], $result->sequence()->choices());
+    }
+
+    public function testDeletesASpan(): void
+    {
+        // the span is longer than the blocks of consecutive choices that are
+        // deleted, so only deleting the span deletes all of its choices at once
+        $result = $this->shrinkerAccepting(['1,5' => [new Span(0, 1, 'element', null), new Span(1, 2, 'element', null)]])->shrink(
+            new ChoiceSequence([1, 2, 3, 4, 5], [new Span(0, 1, 'element', null), new Span(1, 4, 'element', null), new Span(4, 5, 'element', null)]),
+        );
+
+        $this->assertSame([1, 5], $result->sequence()->choices());
+        $this->assertSame(1, $result->numberOfSteps());
+    }
+
+    public function testDeletesASpanWhileRaisingTheChoiceThatDeterminesHowManySpansOfAKindThatItContainsALaterGroupOfSpansHas(): void
+    {
+        // the first of two strings, whose lengths are drawn before their
+        // characters, is deleted while the length of the second string is
+        // raised by the number of choices of the first string
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                if ($candidate->choices() !== [4, 7]) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(
+            new ChoiceSequence(
+                [2, 7, 7, 1, 7],
+                [new Span(0, 3, 'string', null), new Span(1, 2, 'character', 0), new Span(2, 3, 'character', 0), new Span(3, 5, 'string', null), new Span(4, 5, 'character', 3)],
+                [10, 25, 25, 10, 25],
+            ),
+        );
+
+        $this->assertSame([4, 7], $result->sequence()->choices());
+    }
+
+    public function testReplacesLongerSpansFirstAndEachWithTheShortestSpansThatItContainsFirst(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [1, 2, 3, 4, 5, 6, 7],
+                [new Span(0, 7, 'tree', null), new Span(1, 4, 'tree', 0), new Span(2, 3, 'tree', 1), new Span(4, 6, 'tree', 0), new Span(5, 6, 'tree', 3)],
+            ),
+        );
+
+        $replacements = [[3], [6], [5, 6], [2, 3, 4], [1, 3, 5, 6, 7], [1, 2, 3, 4, 6, 7]];
+
+        $this->assertSame(
+            $replacements,
+            array_values(array_filter($candidates, static fn (array $candidate): bool => in_array($candidate, $replacements, true))),
+        );
+    }
+
+    public function testMovesTheValueOfASpanThatConsistsOfOneChoiceToALaterValueWithTheSameLabelAsFarAsItCanTakeIt(): void
+    {
+        // the values are too far apart for redistributing them
+        $spans  = [new Span(0, 1, 'value', null), new Span(1, 5, 'other', null), new Span(5, 6, 'value', null)];
+        $maxima = [10, 10, 10, 10, 10, 10];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($spans, $maxima): ?ChoiceSequence
+            {
+                if ($candidate->choices() !== [2, 1, 1, 1, 1, 10]) {
+                    return null;
+                }
+
+                return new ChoiceSequence($candidate->choices(), $spans, $maxima);
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([7, 1, 1, 1, 1, 5], $spans, $maxima));
+
+        $this->assertSame([2, 1, 1, 1, 1, 10], $result->sequence()->choices());
+    }
+
+    public function testMovesAValueToTheLaterValuesWithTheSameLabelLastOneFirstUntilItIsZeroOrCannotBeMoved(): void
+    {
+        // the last value cannot take more, the value before it takes all of
+        // the first value, and moving the second value does not keep the
+        // counterexample failing
+        $spans = [
+            new Span(0, 1, 'value', null),
+            new Span(1, 5, 'other', null),
+            new Span(5, 6, 'value', null),
+            new Span(6, 10, 'other', null),
+            new Span(10, 11, 'value', null),
+            new Span(11, 15, 'other', null),
+            new Span(15, 16, 'value', null),
+        ];
+
+        $maxima = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($spans, $maxima): ?ChoiceSequence
+            {
+                if ($candidate->choices() !== [0, 1, 1, 1, 1, 4, 1, 1, 1, 1, 5, 1, 1, 1, 1, 10]) {
+                    return null;
+                }
+
+                return new ChoiceSequence($candidate->choices(), $spans, $maxima);
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([3, 1, 1, 1, 1, 4, 1, 1, 1, 1, 2, 1, 1, 1, 1, 10], $spans, $maxima));
+
+        $this->assertSame([0, 1, 1, 1, 1, 4, 1, 1, 1, 1, 5, 1, 1, 1, 1, 10], $result->sequence()->choices());
+    }
+
+    public function testDeletesBlocksOfConsecutiveChoices(): void
+    {
+        $result = $this->shrinkerAccepting(['1,4,5' => []])->shrink(new ChoiceSequence([1, 2, 3, 4, 5]));
+
+        $this->assertSame([1, 4, 5], $result->sequence()->choices());
+    }
+
+    public function testSetsBlocksOfConsecutiveChoicesToZero(): void
+    {
+        $result = $this->shrinkerAccepting(['0,0,7' => []])->shrink(new ChoiceSequence([5, 6, 7]));
+
+        $this->assertSame([0, 0, 7], $result->sequence()->choices());
+    }
+
+    /**
+     * @param non-negative-int $choice
+     * @param non-negative-int $smallest
+     */
+    #[DataProvider('minimizationProvider')]
+    public function testMinimizesAChoiceToTheSmallestValueThatKeepsTheCounterexampleFailing(int $choice, int $smallest): void
+    {
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($smallest): ?ChoiceSequence
+            {
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 1 || $choices[0] < $smallest) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $this->assertSame([$smallest], $shrinker->shrink(new ChoiceSequence([$choice]))->sequence()->choices());
+    }
+
+    public function testMovesEverythingFromAChoiceToANearbyLaterChoiceWhenThatKeepsTheCounterexampleFailing(): void
+    {
+        $result = $this->shrinkerAccepting(['0,11' => []])->shrink(new ChoiceSequence([11, 0]));
+
+        $this->assertSame([0, 11], $result->sequence()->choices());
+    }
+
+    public function testMovesTheLargestAmountFromAChoiceToANearbyLaterChoiceThatKeepsTheCounterexampleFailing(): void
+    {
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 2 || $choices[0] + $choices[1] < 20 || $choices[1] > 15) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $this->assertSame([5, 15], $shrinker->shrink(new ChoiceSequence([20, 0]))->sequence()->choices());
+    }
+
+    /**
+     * @param list<non-negative-int> $expected
+     */
+    #[DataProvider('loweredChoiceWithoutSpansProvider')]
+    public function testLowersAChoiceWhileDeletingAsManySpansOfAGroupOfSpansAfterIt(array $expected): void
+    {
+        // the first choice is the number of elements that are drawn after it
+        $result = $this->shrinkerAccepting([implode(',', $expected) => [new Span(1, 2, 'element', null), new Span(2, 3, 'element', null)]])->shrink(
+            new ChoiceSequence([3, 7, 8, 9], [new Span(1, 2, 'element', null), new Span(2, 3, 'element', null), new Span(3, 4, 'element', null)]),
+        );
+
+        $this->assertSame($expected, $result->sequence()->choices());
+    }
+
+    public function testDeletesSpansOfTheNearestGroupOfSpansAfterAChoiceFirst(): void
+    {
+        // the spans of the group that starts before the choice are listed
+        // first, but the group of spans that starts after the choice is nearer
+        $nearer = [new Span(0, 1, 'b', null), new Span(2, 3, 'a', null), new Span(3, 4, 'b', null), new Span(4, 5, 'b', null)];
+        $other  = [new Span(0, 1, 'b', null), new Span(2, 3, 'a', null), new Span(3, 4, 'a', null), new Span(4, 5, 'b', null)];
+
+        $result = $this->shrinkerAccepting(['9,1,7,5,6' => $nearer, '9,1,7,8,5' => $other])->shrink(
+            new ChoiceSequence(
+                [9, 2, 7, 8, 5, 6],
+                [new Span(0, 1, 'b', null), new Span(2, 3, 'a', null), new Span(3, 4, 'a', null), new Span(4, 5, 'b', null), new Span(5, 6, 'b', null)],
+            ),
+        );
+
+        $this->assertSame([9, 1, 7, 5, 6], $result->sequence()->choices());
+    }
+
+    /**
+     * @param list<non-negative-int> $expected
+     */
+    #[DataProvider('raisedLaterChoiceProvider')]
+    public function testLowersAChoiceWhileDeletingSpansAndRaisingALaterChoiceThatDeterminesHowManySpansOfTheSameKindALaterGroupHas(array $expected): void
+    {
+        // three strings, whose lengths are drawn before their characters: the
+        // length of the first string is lowered while one of its characters
+        // is deleted, and the length of one of the later strings is raised
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($expected): ?ChoiceSequence
+            {
+                if ($candidate->choices() !== $expected) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(
+            new ChoiceSequence(
+                [2, 7, 7, 1, 7, 1, 7],
+                [
+                    new Span(0, 3, 'string', null),
+                    new Span(1, 2, 'character', 0),
+                    new Span(2, 3, 'character', 0),
+                    new Span(3, 5, 'string', null),
+                    new Span(4, 5, 'character', 3),
+                    new Span(5, 7, 'string', null),
+                    new Span(6, 7, 'character', 5),
+                ],
+                [10, 25, 25, 10, 25, 10, 25],
+            ),
+        );
+
+        $this->assertSame($expected, $result->sequence()->choices());
+    }
+
+    public function testLowersEqualChoicesTogetherToTheSmallestValueThatKeepsTheCounterexampleFailing(): void
+    {
+        $spans = [new Span(0, 1, 'element', null), new Span(1, 2, 'element', null)];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($spans): ?ChoiceSequence
+            {
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 2 || $choices[0] !== $choices[1] || $choices[0] < 50) {
+                    return null;
+                }
+
+                return new ChoiceSequence($choices, $spans);
+            },
+            1000,
+        );
+
+        $this->assertSame([50, 50], $shrinker->shrink(new ChoiceSequence([100, 100], $spans))->sequence()->choices());
+    }
+
+    public function testStopsWhenTheMaximumNumberOfAttemptsHasBeenMade(): void
+    {
+        $shrinker = new Shrinker(
+            static fn (ChoiceSequence $candidate): ?ChoiceSequence => null,
+            3,
+        );
+
+        $result = $shrinker->shrink(
+            new ChoiceSequence(
+                [3, 9, 27, 81],
+                [new Span(0, 1, 'element', null), new Span(1, 2, 'element', null), new Span(2, 3, 'element', null), new Span(3, 4, 'element', null)],
+            ),
+        );
+
+        $this->assertSame([3, 9, 27, 81], $result->sequence()->choices());
+        $this->assertSame(3, $result->numberOfAttempts());
+        $this->assertSame(0, $result->numberOfSteps());
+        $this->assertTrue($result->budgetExhausted());
+        $this->assertFalse($result->interrupted());
     }
 
     /**
