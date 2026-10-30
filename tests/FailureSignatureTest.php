@@ -66,6 +66,16 @@ final class FailureSignatureTest extends TestCase
                 FailureSignature::forDescription('failed: message'),
                 FailureSignature::forThrowable(RuntimeException::class, '/path/to/FooTest.php:12'),
             ],
+            'timeout and failure described as "timeout"' => [
+                false,
+                FailureSignature::forTimeout(),
+                FailureSignature::forDescription('timeout'),
+            ],
+            'throwable and failure described like that throwable' => [
+                false,
+                FailureSignature::forThrowable(RuntimeException::class, '/path/to/FooTest.php:12'),
+                FailureSignature::forDescription('RuntimeException at /path/to/FooTest.php:12'),
+            ],
         ];
     }
 

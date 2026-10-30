@@ -12,9 +12,13 @@ namespace SebastianBergmann\ChoiceSequence;
 use function sprintf;
 
 /**
- * Tells whether two failures are the same: when the throwables that ended
- * them have the same class and were raised at the same location, when both
- * exceeded the time limit, or when both are described the same way.
+ * Tells whether two failures are the same: when they are of the same kind
+ * and, unless they exceeded the time limit, have the same text. Failures
+ * that ended with a throwable are the same when the throwables have the
+ * same class and were raised at the same location, failures that exceeded
+ * the time limit are always the same, and failures that are described
+ * otherwise are the same when they are described the same way. Failures of
+ * different kinds are never the same, even when their texts are.
  *
  * Shrinking keeps a simpler choice sequence only when replaying it fails in
  * the same way as the counterexample.
@@ -25,11 +29,19 @@ use function sprintf;
  */
 final readonly class FailureSignature
 {
+    private const int THROWABLE   = 0;
+    private const int TIMEOUT     = 1;
+    private const int DESCRIPTION = 2;
+
+    /**
+     * @var self::DESCRIPTION|self::THROWABLE|self::TIMEOUT
+     */
+    private int $kind;
+
     /**
      * @var non-empty-string
      */
     private string $signature;
-    private bool $timeout;
 
     /**
      * @param class-string     $className the class of the throwable that ended the example
@@ -38,18 +50,18 @@ final readonly class FailureSignature
     public static function forThrowable(string $className, string $location): self
     {
         return new self(
+            self::THROWABLE,
             sprintf(
                 '%s at %s',
                 $className,
                 $location,
             ),
-            false,
         );
     }
 
     public static function forTimeout(): self
     {
-        return new self('timeout', true);
+        return new self(self::TIMEOUT, 'timeout');
     }
 
     /**
@@ -57,16 +69,17 @@ final readonly class FailureSignature
      */
     public static function forDescription(string $description): self
     {
-        return new self($description, false);
+        return new self(self::DESCRIPTION, $description);
     }
 
     /**
-     * @param non-empty-string $signature
+     * @param self::DESCRIPTION|self::THROWABLE|self::TIMEOUT $kind
+     * @param non-empty-string                                $signature
      */
-    private function __construct(string $signature, bool $timeout)
+    private function __construct(int $kind, string $signature)
     {
+        $this->kind      = $kind;
         $this->signature = $signature;
-        $this->timeout   = $timeout;
     }
 
     /**
@@ -74,12 +87,13 @@ final readonly class FailureSignature
      */
     public function isTimeout(): bool
     {
-        return $this->timeout;
+        return $this->kind === self::TIMEOUT;
     }
 
     public function isSameAs(self $other): bool
     {
-        return $this->signature === $other->signature;
+        return $this->kind === $other->kind &&
+               $this->signature === $other->signature;
     }
 
     /**
@@ -90,7 +104,7 @@ final readonly class FailureSignature
      */
     public function description(): string
     {
-        if ($this->timeout) {
+        if ($this->kind === self::TIMEOUT) {
             return 'exceeding the time limit';
         }
 
