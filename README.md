@@ -26,6 +26,49 @@ composer require --dev sebastian/choice-sequence
 
 ## Usage
 
+### Drawing and replaying choices
+
+Code that generates a value draws its choices from a choice source. A choice source draws the choices at random, or replays the choices of a choice sequence. Spans mark the choices that form one part of the value, which helps the shrinker.
+
+#### `draw.php`
+```php
+use Random\Engine\Xoshiro256StarStar;
+use Random\Randomizer;
+use SebastianBergmann\ChoiceSequence\ChoiceSource;
+use SebastianBergmann\ChoiceSequence\UniformDistribution;
+
+function word(ChoiceSource $source): string
+{
+    $word   = '';
+    $length = $source->draw(8, new UniformDistribution);
+
+    for ($i = 0; $i < $length; $i++) {
+        $source->startSpan('letter');
+
+        $word .= $source->choose(range('a', 'z'), new UniformDistribution);
+
+        $source->endSpan();
+    }
+
+    return $word;
+}
+
+$source = ChoiceSource::random(new Randomizer(new Xoshiro256StarStar(1234)));
+
+print word($source) . PHP_EOL;
+
+$sequence = $source->sequence();
+
+print implode(', ', $sequence->choices()) . PHP_EOL;
+print word(ChoiceSource::replay($sequence)) . PHP_EOL;
+```
+
+```
+yrbwbzig
+8, 24, 17, 1, 22, 1, 25, 8, 6
+yrbwbzig
+```
+
 ### Shrinking a choice sequence
 
 The shrinker is given a closure that replays a candidate. The closure returns the choice sequence that the replay consumed when the candidate still fails in the same way, and `null` otherwise.
