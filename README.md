@@ -101,3 +101,32 @@ print $result->numberOfSteps() . ' steps, ' . $result->numberOfAttempts() . ' at
 10
 3 steps, 22 attempts
 ```
+
+### Storing choice sequences
+
+A choice sequence can be stored in a text file, for instance to replay a failing example again later. The format is meant to be compared with diff: the line `choice-sequence v1` is followed by one choice per line, each choice is a decimal integer without sign and leading zeros, and each line ends with a line feed. Only the choices are stored: spans and maxima are recorded again when the choices are replayed.
+
+#### `store.php`
+```php
+use SebastianBergmann\ChoiceSequence\ChoiceSequence;
+use SebastianBergmann\ChoiceSequence\Decoder;
+use SebastianBergmann\ChoiceSequence\Encoder;
+
+$encoded = (new Encoder)->encode(new ChoiceSequence([0, 17, 3]));
+
+print $encoded;
+
+$sequence = (new Decoder)->decode($encoded);
+
+print implode(', ', $sequence->choices()) . PHP_EOL;
+```
+
+```
+choice-sequence v1
+0
+17
+3
+0, 17, 3
+```
+
+The decoder also accepts lines that end with a carriage return and a line feed, which Git can turn line feeds into when a file is checked out on Windows. Anything else is rejected with an `InvalidChoiceSequenceException` that names the line that is not valid.
