@@ -8,6 +8,7 @@ parameters:
     reportAlwaysTrueInLastCondition: true
     reportPossiblyNonexistentConstantArrayOffset: true
     reportPossiblyNonexistentGeneralArrayOffset: true
+    treatPhpDocTypesAsCertain: false
 
     strictRules:
         allRules: false
