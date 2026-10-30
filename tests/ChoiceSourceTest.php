@@ -11,8 +11,10 @@ namespace SebastianBergmann\ChoiceSequence;
 
 use function array_map;
 use function array_unique;
+use function array_values;
 use function count;
 use function serialize;
+use function sort;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Small;
 use PHPUnit\Framework\Attributes\UsesClass;
@@ -226,6 +228,20 @@ final class ChoiceSourceTest extends TestCase
         $this->assertSame('candidate', $source->suggest(['candidate'], 1.0));
         $this->assertNull($source->suggest(['candidate'], 0.0));
         $this->assertSame([], $source->sequence()->choices());
+    }
+
+    public function testSuggestsEachOfTheCandidates(): void
+    {
+        $source      = ChoiceSource::random(new Randomizer(new Xoshiro256StarStar(1)));
+        $suggestions = [];
+
+        for ($i = 0; $i < 100; $i++) {
+            $suggestions[] = $source->suggest(['a', 'b', 'c'], 1.0);
+        }
+
+        sort($suggestions);
+
+        $this->assertSame(['a', 'b', 'c'], array_values(array_unique($suggestions)));
     }
 
     public function testDoesNotSuggestACandidateWhileASequenceIsReplayed(): void
