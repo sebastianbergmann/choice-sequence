@@ -10,8 +10,8 @@
 namespace SebastianBergmann\ChoiceSequence;
 
 /**
- * The choice sequences of the examples of a property that have been
- * generated, as a tree in which each node stands for the choices that were
+ * The choice sequences of the examples that have been generated, as a tree
+ * in which each node stands for the choices that were
  * drawn before it, and the choices that can be drawn next are its children.
  *
  * A node is exhausted when every choice sequence that starts with its choices
@@ -24,8 +24,8 @@ namespace SebastianBergmann\ChoiceSequence;
  * This relies on the generators to generate the same value from the same
  * choices. When they do not, because a generator draws a choice where it did
  * not before, the tree is no longer used. It is not used either once it has
- * too many nodes, which only a property whose examples consist of many
- * choices has, for which it is unlikely that an example is generated twice,
+ * too many nodes, which only examples that consist of many choices lead
+ * to, for which it is unlikely that an example is generated twice,
  * so that its memory is released.
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence

@@ -31,8 +31,8 @@ use Closure;
 
 /**
  * Shrinks the choice sequence of a counterexample: it repeatedly tries
- * simpler choice sequences and keeps one when replaying it falsifies the
- * property in the same way.
+ * simpler choice sequences and keeps one when replaying it fails in the
+ * same way.
  *
  * The shrinker works on choice sequences only. It neither knows the
  * generators that build values from the choices nor how a candidate is
@@ -50,12 +50,12 @@ use Closure;
  * raising a later one to its largest value, lowering a choice while deleting
  * as many spans of a group of spans that are part of the same span and have
  * the same label after it, lowering equal choices together, and sorting the
- * spans that are part of the same span and have the same label. The passes are repeated until none of them succeeds, the
- * maximum number of attempts has been made, or shrinking is interrupted
- * because the test run is to be stopped. Each round of passes starts with
- * the passes that made the counterexample simpler most often in the round
- * before, so that the attempts are spent on the passes that are most likely
- * to succeed.
+ * spans that are part of the same span and have the same label. The passes
+ * are repeated until none of them succeeds, the maximum number of attempts
+ * has been made, or shrinking is interrupted. Each round of passes starts
+ * with the passes that made the counterexample simpler most often in the
+ * round before, so that the attempts are spent on the passes that are most
+ * likely to succeed.
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
@@ -112,8 +112,8 @@ final class Shrinker
     /**
      * @param Closure(ChoiceSequence): ?ChoiceSequence $test                    replays a candidate and returns the choice
      *                                                                          sequence that the replay consumed when the
-     *                                                                          candidate falsifies the property in the
-     *                                                                          same way, and null otherwise
+     *                                                                          candidate fails in the same way, and null
+     *                                                                          otherwise
      * @param non-negative-int                         $maximumNumberOfAttempts
      * @param ?Closure(): bool                         $shouldStop              whether shrinking is to be interrupted, which is asked before each attempt
      */
@@ -227,14 +227,14 @@ final class Shrinker
     }
 
     /**
-     * What a span contributed to the counterexample can be needed to keep the
-     * property falsified, the length of a domain name to which a label
+     * What a span contributed to the counterexample can be needed to keep it
+     * failing, the length of a domain name to which a label
      * contributes, for instance. The span is deleted while its contribution
      * is moved to a later group of spans of a kind that it contains, the
      * top-level domain, for instance, by raising the choice that determines
      * how many spans the group has by the number of choices of the span.
-     * Other passes lower the raised choice again, as far as the property
-     * stays falsified.
+     * Other passes lower the raised choice again, as far as the
+     * counterexample keeps failing.
      */
     private function deleteSpanRaisingLaterChoice(Span $span): bool
     {
@@ -495,9 +495,9 @@ final class Shrinker
             }
         }
 
-        // the largest small value that was tried is a lower bound that does
-        // not falsify the property, and the current choice is an upper bound
-        // that does
+        // the largest small value that was tried is a lower bound for which
+        // the candidate does not fail, and the current choice is an upper
+        // bound for which it does
         $lower = self::LARGEST_SMALL_VALUE;
         $upper = $choice;
 
@@ -537,7 +537,7 @@ final class Shrinker
 
     /**
      * Moves as much as possible from the choice at $first to the choice at
-     * $second: everything if that keeps the property falsified, otherwise the
+     * $second: everything if that keeps the counterexample failing, otherwise the
      * largest amount that a binary search finds.
      *
      * @param non-negative-int $first
@@ -559,7 +559,7 @@ final class Shrinker
             return;
         }
 
-        // moving nothing keeps the property falsified, moving everything
+        // moving nothing keeps the counterexample failing, moving everything
         // that can be moved does not
         $lower = 0;
         $upper = $movable;
@@ -591,10 +591,10 @@ final class Shrinker
      * A counterexample for a property such as $a * $b < 1000, with $a and $b
      * between 0 and 100, cannot be shrunk from [20, 50] to [10, 100] by
      * minimizing one choice at a time or by moving an amount from $a to $b,
-     * which keeps their sum. Lowering a choice by one can keep the property
-     * falsified when a later choice is raised to the largest value it can
-     * have, which the choice source clamps a larger choice to, and from which
-     * the other passes lower it again.
+     * which keeps their sum. Lowering a choice by one can keep the
+     * counterexample failing when a later choice is raised to the largest
+     * value it can have, which the choice source clamps a larger choice to,
+     * and from which the other passes lower it again.
      */
     private function lowerChoicesRaisingLaterOnes(): void
     {
@@ -613,8 +613,8 @@ final class Shrinker
 
     /**
      * A choice can determine how many values are drawn after it, for instance
-     * the size of a list that is drawn with Generators::lists($elements,
-     * $size, $size) followed by an index into it. Lowering such a choice alone
+     * the size of a list, which is drawn before its elements, and an index
+     * into the list that is drawn after them. Lowering such a choice alone
      * makes the choices of the elements that are no longer drawn be read as
      * the index, and deleting the choices of elements alone makes the list
      * read the choice of the index as an element. The choice is therefore
@@ -668,8 +668,8 @@ final class Shrinker
             $withoutLastSpans = $this->withLoweredChoiceAndWithoutSpans($index, $deleted, $lastSpans);
 
             // the first spans are deleted when deleting the last ones does not
-            // keep the property falsified, because the value that falsifies
-            // it is one of the last ones, the last character of a string, for
+            // keep the counterexample failing, because the value that makes it
+            // fail is one of the last ones, the last character of a string, for
             // instance
             if ($this->consider($withoutLastSpans) ||
                 $this->consider($this->withLoweredChoiceAndWithoutSpans($index, $deleted, array_slice($spans, 0, $deleted)))) {
@@ -677,7 +677,7 @@ final class Shrinker
             }
 
             // what the deleted spans contributed to the counterexample can be
-            // needed to keep the property falsified, the length of a domain
+            // needed to keep the counterexample failing, the length of a domain
             // name, for instance, and can be moved to a later group of spans
             // of the same kind by raising the choice that determines how
             // many spans it has
@@ -876,7 +876,7 @@ final class Shrinker
 
     /**
      * Considers the siblings in sorted order and, if that does not keep the
-     * property falsified, with adjacent siblings that are out of order
+     * counterexample failing, with adjacent siblings that are out of order
      * swapped.
      *
      * @param non-empty-list<Span> $siblings
@@ -919,7 +919,7 @@ final class Shrinker
 
     /**
      * Lowers the choices at the indexes, which have to be equal, to the
-     * smallest value that keeps the property falsified: a small value if
+     * smallest value that keeps the counterexample failing: a small value if
      * possible, otherwise the value that a binary search finds.
      *
      * @param non-empty-list<non-negative-int> $indexes
@@ -939,9 +939,9 @@ final class Shrinker
             }
         }
 
-        // the largest small value that was tried is a lower bound that does
-        // not falsify the property, and the current choice is an upper bound
-        // that does
+        // the largest small value that was tried is a lower bound for which
+        // the candidate does not fail, and the current choice is an upper
+        // bound for which it does
         $lower = self::LARGEST_SMALL_VALUE;
         $upper = $choice;
 
@@ -1013,7 +1013,7 @@ final class Shrinker
      * Replays the candidate, unless it has been tried before, the maximum
      * number of attempts has been reached, or shrinking is interrupted, and
      * keeps the choice sequence that the replay consumed when the candidate
-     * falsifies the property in the same way and that sequence is simpler
+     * fails in the same way and that sequence is simpler
      * than the current one.
      *
      * @param list<non-negative-int> $choices

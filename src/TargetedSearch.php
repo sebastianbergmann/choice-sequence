@@ -19,8 +19,7 @@ use Random\Randomizer;
 
 /**
  * Searches for examples with higher scores than the examples that were
- * checked so far, for the scores that the examples of a property target with
- * TestCase::target().
+ * checked so far, for the scores that the examples target.
  *
  * For each label, the search climbs from the choice sequence of the example
  * with the highest score: it changes one choice of the sequence at a time,

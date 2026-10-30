@@ -62,8 +62,8 @@ final readonly class ShrinkingResult
     }
 
     /**
-     * The number of simpler choice sequences that were replayed and
-     * falsified the property in the same way.
+     * The number of simpler choice sequences that were replayed and failed
+     * in the same way.
      *
      * @return non-negative-int
      */
@@ -82,9 +82,8 @@ final readonly class ShrinkingResult
     }
 
     /**
-     * Whether shrinking was stopped because the test run is to be stopped,
-     * for instance because its deadline has passed, in which case a simpler
-     * counterexample may exist.
+     * Whether shrinking was interrupted, for instance because a deadline has
+     * passed, in which case a simpler counterexample may exist.
      */
     public function interrupted(): bool
     {

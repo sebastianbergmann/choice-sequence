@@ -45,7 +45,7 @@ final readonly class Span
     /**
      * @param non-negative-int  $start  the index of the first choice of the span
      * @param positive-int      $end    the index after the last choice of the span
-     * @param non-empty-string  $label  identifies how the choices of the span were drawn (see AbstractGenerator::label())
+     * @param non-empty-string  $label  identifies how the choices of the span were drawn
      * @param ?non-negative-int $parent the index of the span this span is part of among the spans of the choice sequence, null when it is not part of another span
      */
     public function __construct(int $start, int $end, string $label, ?int $parent)

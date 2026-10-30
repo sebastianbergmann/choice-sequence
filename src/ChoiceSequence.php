@@ -12,7 +12,7 @@ namespace SebastianBergmann\ChoiceSequence;
 use function array_key_exists;
 
 /**
- * The choices from which the arguments of an example were generated, together
+ * The choices from which an example was generated, together
  * with the spans that generators marked while they consumed them, and, when
  * the choices were drawn by a choice source, the largest choice that each
  * choice could have been.
