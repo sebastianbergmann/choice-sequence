@@ -167,6 +167,8 @@ final class ChoiceSource
      * @throws TooManyChoicesException
      *
      * @return non-negative-int
+     *
+     * @phpstan-impure
      */
     public function draw(int $maximum, Distribution $distribution): int
     {
@@ -217,6 +219,8 @@ final class ChoiceSource
      * @throws TooManyChoicesException
      *
      * @return T
+     *
+     * @phpstan-impure
      */
     public function choose(array $elements, Distribution $distribution): mixed
     {
@@ -241,6 +245,8 @@ final class ChoiceSource
      * @param non-empty-list<T> $candidates
      *
      * @return ?T
+     *
+     * @phpstan-impure
      */
     public function suggest(array $candidates, float $probability): mixed
     {
