@@ -28,6 +28,10 @@ namespace SebastianBergmann\ChoiceSequence;
  * to, for which it is unlikely that an example is generated twice,
  * so that its memory is released.
  *
+ * Only the constructor, DEFAULT_MAXIMUM_NUMBER_OF_NODES, isExhausted(), and
+ * passing the tree to ChoiceSource::random() and ChoiceSource::replay() are
+ * covered by the backward compatibility promise for sebastian/choice-sequence.
+ *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
 final class ChoiceTree
@@ -57,6 +61,8 @@ final class ChoiceTree
     /**
      * The node for the choices that are drawn first, null when the tree is
      * no longer used.
+     *
+     * @internal This method is not covered by the backward compatibility promise for sebastian/choice-sequence
      */
     public function root(): ?ChoiceTreeNode
     {
@@ -77,6 +83,8 @@ final class ChoiceTree
      * would have too many nodes.
      *
      * @param non-negative-int $choice
+     *
+     * @internal This method is not covered by the backward compatibility promise for sebastian/choice-sequence
      */
     public function child(ChoiceTreeNode $node, int $choice): ?ChoiceTreeNode
     {
@@ -104,6 +112,8 @@ final class ChoiceTree
     /**
      * No longer uses the tree, because the generators do not generate the
      * same value from the same choices.
+     *
+     * @internal This method is not covered by the backward compatibility promise for sebastian/choice-sequence
      */
     public function discard(): void
     {
