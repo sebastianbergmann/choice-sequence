@@ -45,4 +45,14 @@ final class SpanTest extends TestCase
     {
         $this->assertNull(new Span(2, 5, 'element', null)->parent());
     }
+
+    public function testMayHaveAKind(): void
+    {
+        $this->assertSame(SpanKind::Element, new Span(2, 5, 'element', null, SpanKind::Element)->kind());
+    }
+
+    public function testMayNotHaveAKind(): void
+    {
+        $this->assertNull(new Span(2, 5, 'element', null)->kind());
+    }
 }

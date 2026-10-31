@@ -75,7 +75,7 @@ final class ChoiceSource
      * The spans that were started, in the order in which they were started.
      * The end of a span is null until it is ended.
      *
-     * @var list<array{start: non-negative-int, end: ?non-negative-int, label: non-empty-string}>
+     * @var list<array{start: non-negative-int, end: ?non-negative-int, label: non-empty-string, kind: ?SpanKind}>
      */
     private array $spans = [];
 
@@ -269,9 +269,10 @@ final class ChoiceSource
      * Marks the start of a span: the choices that are drawn until the span is
      * ended form one part of the value, for instance an element of a list.
      *
-     * @param non-empty-string $label identifies how the choices of the span are drawn
+     * @param non-empty-string $label identifies how the choices of the span are drawn (see Label)
+     * @param ?SpanKind        $kind  tells what the choices of the span stand for, when this matters to tools that change choice sequences
      */
-    public function startSpan(string $label): void
+    public function startSpan(string $label, ?SpanKind $kind = null): void
     {
         $this->openSpans[] = count($this->spans);
 
@@ -279,6 +280,7 @@ final class ChoiceSource
             'start' => count($this->choices),
             'end'   => null,
             'label' => $label,
+            'kind'  => $kind,
         ];
     }
 
@@ -330,7 +332,7 @@ final class ChoiceSource
             $enclosingEnds[]    = $end;
             $enclosingIndexes[] = count($spans);
 
-            $spans[] = new Span($start, $end, $span['label'], $parent);
+            $spans[] = new Span($start, $end, $span['label'], $parent, $span['kind']);
         }
 
         return new ChoiceSequence($this->choices, $spans, $this->maxima);

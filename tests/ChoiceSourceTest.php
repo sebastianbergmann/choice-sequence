@@ -174,6 +174,29 @@ final class ChoiceSourceTest extends TestCase
         $this->assertSame([null, 0, 0, null], array_map(static fn (Span $span): ?int => $span->parent(), $spans));
     }
 
+    public function testRecordsTheKindsOfSpans(): void
+    {
+        $source = ChoiceSource::replay(new ChoiceSequence([1, 97, 0]));
+
+        $source->startSpan('bytes', SpanKind::Bytes);
+        $source->startSpan('byte', SpanKind::Element);
+        $source->draw(1, new UniformDistribution);
+        $source->draw(255, new UniformDistribution);
+        $source->endSpan();
+        $source->startSpan('byte', SpanKind::Element);
+        $source->draw(1, new UniformDistribution);
+        $source->endSpan();
+        $source->endSpan();
+        $source->startSpan('other');
+        $source->draw(1, new UniformDistribution);
+        $source->endSpan();
+
+        $this->assertSame(
+            [SpanKind::Bytes, SpanKind::Element, SpanKind::Element, null],
+            array_map(static fn (Span $span): ?SpanKind => $span->kind(), $source->sequence()->spans()),
+        );
+    }
+
     public function testDoesNotRecordSpansWithoutChoices(): void
     {
         $source = ChoiceSource::replay(new ChoiceSequence([]));

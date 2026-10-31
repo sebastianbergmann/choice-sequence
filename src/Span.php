@@ -41,19 +41,22 @@ final readonly class Span
      * @var ?non-negative-int
      */
     private ?int $parent;
+    private ?SpanKind $kind;
 
     /**
      * @param non-negative-int  $start  the index of the first choice of the span
      * @param positive-int      $end    the index after the last choice of the span
      * @param non-empty-string  $label  identifies how the choices of the span were drawn
      * @param ?non-negative-int $parent the index of the span this span is part of among the spans of the choice sequence, null when it is not part of another span
+     * @param ?SpanKind         $kind   what the choices of the span stand for, null when this is not known
      */
-    public function __construct(int $start, int $end, string $label, ?int $parent)
+    public function __construct(int $start, int $end, string $label, ?int $parent, ?SpanKind $kind = null)
     {
         $this->start  = $start;
         $this->end    = $end;
         $this->label  = $label;
         $this->parent = $parent;
+        $this->kind   = $kind;
     }
 
     /**
@@ -86,6 +89,14 @@ final readonly class Span
     public function parent(): ?int
     {
         return $this->parent;
+    }
+
+    /**
+     * What the choices of the span stand for, null when this is not known.
+     */
+    public function kind(): ?SpanKind
+    {
+        return $this->kind;
     }
 
     /**
