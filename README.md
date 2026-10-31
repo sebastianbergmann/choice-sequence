@@ -69,6 +69,19 @@ yrbwbzig
 yrbwbzig
 ```
 
+### Labels and kinds of spans
+
+The label of a span identifies how its choices are drawn: code that draws choices in the same way labels its spans in the same way. `Label::of()` computes a label from a name and its components, for instance the parameters of a generator, in the same way for every tool that uses this library.
+
+A span may also have a kind, which tells tools that change choice sequences without knowing the code that draws them what the choices stand for: `SpanKind::Bytes` for a binary string that is drawn as a collection of bytes, and `SpanKind::Element` for an element of a collection, for instance one byte of such a string.
+
+```php
+use SebastianBergmann\ChoiceSequence\Label;
+use SebastianBergmann\ChoiceSequence\SpanKind;
+
+$source->startSpan(Label::of('bytes', '0', '4096'), SpanKind::Bytes);
+```
+
 ### Shrinking a choice sequence
 
 The shrinker is given a closure that replays a candidate. The closure returns the choice sequence that the replay consumed when the candidate still fails in the same way, and `null` otherwise.
@@ -100,6 +113,30 @@ print $result->numberOfSteps() . ' steps, ' . $result->numberOfAttempts() . ' at
 ```
 10
 3 steps, 22 attempts
+```
+
+### Telling failures apart
+
+A failure signature tells whether two failures are the same: when they are of the same kind and, unless they exceeded the time limit, have the same text. Its kind and its text can be stored, together with the choice sequence of a counterexample, for instance, and the signature can be recreated from them:
+
+#### `signature.php`
+```php
+use SebastianBergmann\ChoiceSequence\FailureSignature;
+
+$signature = FailureSignature::forThrowable(RuntimeException::class, 'src/Parser.php:12');
+
+print $signature->kind() . PHP_EOL;
+print $signature->text() . PHP_EOL;
+
+$recreated = FailureSignature::fromKindAndText($signature->kind(), $signature->text());
+
+var_dump($recreated->isSameAs($signature));
+```
+
+```
+throwable
+RuntimeException at src/Parser.php:12
+bool(true)
 ```
 
 ### Storing choice sequences
