@@ -73,6 +73,27 @@ final readonly class FailureSignature
     }
 
     /**
+     * Recreates a failure signature from its kind and its text, for instance
+     * after they were stored with a counterexample: the signature is the same
+     * as the one whose kind() and text() they are.
+     *
+     * @throws InvalidFailureSignatureException
+     */
+    public static function fromKindAndText(string $kind, string $text): self
+    {
+        if ($text === '') {
+            throw InvalidFailureSignatureException::emptyText();
+        }
+
+        return match ($kind) {
+            'throwable'   => new self(self::THROWABLE, $text),
+            'timeout'     => self::forTimeout(),
+            'description' => new self(self::DESCRIPTION, $text),
+            default       => throw InvalidFailureSignatureException::unknownKind($kind),
+        };
+    }
+
+    /**
      * @param self::DESCRIPTION|self::THROWABLE|self::TIMEOUT $kind
      * @param non-empty-string                                $signature
      */
@@ -88,6 +109,36 @@ final readonly class FailureSignature
     public function isTimeout(): bool
     {
         return $this->kind === self::TIMEOUT;
+    }
+
+    /**
+     * Whether the failure ended with a throwable, exceeded the time limit, or
+     * is described otherwise. Together with the text, the kind tells failures
+     * apart and can be stored to recreate the signature (see fromKindAndText()).
+     *
+     * @return 'description'|'throwable'|'timeout'
+     */
+    public function kind(): string
+    {
+        return match ($this->kind) {
+            self::THROWABLE   => 'throwable',
+            self::TIMEOUT     => 'timeout',
+            self::DESCRIPTION => 'description',
+        };
+    }
+
+    /**
+     * The text that, together with the kind, tells failures apart, for
+     * instance "RuntimeException at /path/to/FooTest.php:12" for a throwable,
+     * the description of a failure that is described otherwise, and "timeout"
+     * for a failure that exceeded the time limit. Unlike description(), it
+     * is not meant to be shown to people.
+     *
+     * @return non-empty-string
+     */
+    public function text(): string
+    {
+        return $this->signature;
     }
 
     public function isSameAs(self $other): bool
