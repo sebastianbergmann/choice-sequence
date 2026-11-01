@@ -12,8 +12,9 @@ namespace SebastianBergmann\ChoiceSequence;
 /**
  * What the choices of a span stand for, as far as tools that change choice
  * sequences without knowing the code that draws them need to know it. A
- * fuzzer, for instance, inserts the bytes of a token into a binary string at
- * the boundaries between its elements.
+ * fuzzer, for instance, inserts a token into a string at the boundaries
+ * between its elements, as bytes into a binary string or as characters into a
+ * string of Unicode characters.
  *
  * The label of a span tells which spans are drawn the same way, but it is an
  * opaque hash. The kind of a span is optional and tells what it holds.
@@ -30,6 +31,16 @@ enum SpanKind
      * Element that consists of the choice 0.
      */
     case Bytes;
+
+    /**
+     * A string of Unicode characters that is drawn as a collection of
+     * characters: each character is a span of the kind Element that consists
+     * of the choice 1 ("another character"), followed by the index of its
+     * code point in the order of CodePoints, in the range [0,
+     * CodePoints::LARGEST_INDEX]. Unless the string has its maximum length,
+     * it ends with a span of the kind Element that consists of the choice 0.
+     */
+    case Characters;
 
     /**
      * An element of a collection: the choices of the element, preceded by the
