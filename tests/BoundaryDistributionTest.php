@@ -82,8 +82,8 @@ final class BoundaryDistributionTest extends TestCase
         $this->assertContains(0, $samples);
         $this->assertContains(1, $samples);
         $this->assertContains(PHP_INT_MAX, $samples);
-        $this->assertNotEmpty(array_filter($samples, static fn (int $choice): bool => $choice > 1000 && $choice < 1000000));
-        $this->assertNotEmpty(array_filter($samples, static fn (int $choice): bool => $choice > 1000000000000 && $choice < PHP_INT_MAX));
+        $this->assertNotCount(0, array_filter($samples, static fn (int $choice): bool => $choice > 1000 && $choice < 1000000));
+        $this->assertNotCount(0, array_filter($samples, static fn (int $choice): bool => $choice > 1000000000000 && $choice < PHP_INT_MAX));
     }
 
     public function testSamplesZeroWhenTheRangeOnlyContainsZero(): void

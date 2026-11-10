@@ -12,7 +12,6 @@ namespace SebastianBergmann\ChoiceSequence;
 use function array_map;
 use function array_unique;
 use function array_values;
-use function count;
 use function serialize;
 use function sort;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -290,7 +289,7 @@ final class ChoiceSourceTest extends TestCase
             $sequences[] = $source->sequence()->choices();
         }
 
-        $this->assertSame(10, count(array_unique(array_map(serialize(...), $sequences))));
+        $this->assertCount(10, array_unique(array_map(serialize(...), $sequences)));
         $this->assertTrue($tree->isExhausted());
     }
 

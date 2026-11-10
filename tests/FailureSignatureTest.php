@@ -135,7 +135,7 @@ final class FailureSignatureTest extends TestCase
     public function testCannotBeRecreatedFromAnUnknownKind(): void
     {
         $this->expectException(InvalidFailureSignatureException::class);
-        $this->expectExceptionMessage('"error" is not a kind of failure, expected "throwable", "timeout", or "description"');
+        $this->expectExceptionMessageIs('"error" is not a kind of failure, expected "throwable", "timeout", or "description"');
 
         FailureSignature::fromKindAndText('error', 'RuntimeException at /path/to/FooTest.php:12');
     }
@@ -143,7 +143,7 @@ final class FailureSignatureTest extends TestCase
     public function testCannotBeRecreatedFromAnEmptyText(): void
     {
         $this->expectException(InvalidFailureSignatureException::class);
-        $this->expectExceptionMessage('The text of a failure signature must not be empty');
+        $this->expectExceptionMessageIs('The text of a failure signature must not be empty');
 
         FailureSignature::fromKindAndText('description', '');
     }
