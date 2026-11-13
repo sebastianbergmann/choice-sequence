@@ -10,6 +10,7 @@
 namespace SebastianBergmann\ChoiceSequence;
 
 use const PHP_INT_MAX;
+use function array_fill;
 use function array_filter;
 use function array_key_exists;
 use function array_search;
@@ -291,7 +292,55 @@ final class ShrinkerTest extends TestCase
         $index = array_search([4, PHP_INT_MAX], $candidates, true);
 
         $this->assertIsInt($index);
-        $this->assertSame([[4, PHP_INT_MAX], [3, PHP_INT_MAX]], array_slice($candidates, $index, 2));
+
+        // the attempts to minimize the second choice right after it was
+        // raised belong to the same pass
+        $candidatesAfterwards = array_values(
+            array_filter(
+                array_slice($candidates, $index + 1),
+                static fn (array $candidate): bool => $candidate !== [] && $candidate[0] !== 4,
+            ),
+        );
+
+        $this->assertSame([[3, PHP_INT_MAX]], array_slice($candidatesAfterwards, 0, 1));
+    }
+
+    public function testMinimizesALaterChoiceRightAfterItWasRaisedWhileAChoiceWasLowered(): void
+    {
+        $candidates = [];
+
+        // the choices are the two digits of a number that is at least 45
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                if (count($candidate->choices()) !== 2) {
+                    return null;
+                }
+
+                $first  = min($candidate->choices()[0], 9);
+                $second = min($candidate->choices()[1], 9);
+
+                if ($first * 10 + $second < 45) {
+                    return null;
+                }
+
+                return new ChoiceSequence([$first, $second]);
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([5, 0]));
+
+        $index = array_search([4, PHP_INT_MAX], $candidates, true);
+
+        $this->assertIsInt($index);
+
+        // smaller values for the second digit were tried by earlier passes
+        // and are not replayed again
+        $this->assertSame([[4, PHP_INT_MAX], [4, 2]], array_slice($candidates, $index, 2));
+        $this->assertSame([4, 5], $result->sequence()->choices());
     }
 
     public function testSortsSpansThatArePartOfTheSameSpanAndHaveTheSameLabel(): void
@@ -618,6 +667,27 @@ final class ShrinkerTest extends TestCase
         $result = $this->shrinkerAccepting(['0,0,7' => []])->shrink(new ChoiceSequence([5, 6, 7]));
 
         $this->assertSame([0, 0, 7], $result->sequence()->choices());
+    }
+
+    public function testSetsBlocksOfChoicesToZeroBeforeItDeletesBlocksOfChoicesAndSkipsABlockThatWasSetToZero(): void
+    {
+        // no choice can be deleted, as for a collection that has its smallest size
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                if (count($candidate->choices()) !== 16) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            2,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence(array_fill(0, 16, 1)));
+
+        $this->assertSame(array_fill(0, 16, 0), $result->sequence()->choices());
+        $this->assertSame(2, $result->numberOfAttempts());
     }
 
     /**

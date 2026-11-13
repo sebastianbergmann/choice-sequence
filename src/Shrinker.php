@@ -42,12 +42,13 @@ use Closure;
  * Its passes are deleting spans, replacing spans with shorter spans they
  * contain that have the same label, moving the values of spans that consist
  * of one choice into the later values of spans with the same label as far
- * as these can take them, deleting blocks of consecutive choices,
- * setting blocks of choices to 0, minimizing individual choices by trying
+ * as these can take them, setting blocks of consecutive choices to 0,
+ * deleting blocks of choices, minimizing individual choices by trying
  * small values and then searching for the smallest value with a binary
  * search, redistributing pairs of nearby choices by moving as much as
  * possible from the first choice to the second, lowering a choice while
- * raising a later one to its largest value, lowering a choice while deleting
+ * raising a later one to its largest value and minimizing the raised choice
+ * right away, lowering a choice while deleting
  * as many spans of a group of spans that are part of the same span and have
  * the same label after it, lowering equal choices together, and sorting the
  * spans that are part of the same span and have the same label. The passes
@@ -146,8 +147,8 @@ final class Shrinker
             $this->deleteSpans(...),
             $this->replaceSpansWithDescendants(...),
             $this->moveValuesToLaterValuesWithTheSameLabel(...),
-            $this->deleteBlocks(...),
             $this->zeroBlocks(...),
+            $this->deleteBlocks(...),
             $this->minimizeChoices(...),
             $this->redistributeChoices(...),
             $this->lowerChoicesRaisingLaterOnes(...),
@@ -462,6 +463,13 @@ final class Shrinker
         }
     }
 
+    /**
+     * Blocks are set to 0 before blocks are deleted, because a collection
+     * that has its smallest size keeps the attempts to delete its choices
+     * from succeeding, and these attempts would use up what the attempts to
+     * set its choices to 0 need. A block that was set to 0 is skipped, so that
+     * the next attempt does not overlap with it.
+     */
     private function zeroBlocks(): void
     {
         foreach (self::BLOCK_SIZES as $size) {
@@ -470,7 +478,9 @@ final class Shrinker
                     continue;
                 }
 
-                $this->consider($this->withZeroedChoices($start, $size));
+                if ($this->consider($this->withZeroedChoices($start, $size))) {
+                    $start += $size - 1;
+                }
             }
         }
     }
@@ -593,8 +603,10 @@ final class Shrinker
      * minimizing one choice at a time or by moving an amount from $a to $b,
      * which keeps their sum. Lowering a choice by one can keep the
      * counterexample failing when a later choice is raised to the largest
-     * value it can have, which the choice source clamps a larger choice to,
-     * and from which the other passes lower it again.
+     * value it can have, which the choice source clamps a larger choice to.
+     * The raised choice is minimized right away, so that a run of choices such
+     * as the digits of a number is minimized from left to right in one go
+     * rather than one choice for each round of passes.
      */
     private function lowerChoicesRaisingLaterOnes(): void
     {
@@ -605,6 +617,10 @@ final class Shrinker
                 }
 
                 if ($this->consider($this->withLoweredAndRaisedChoice($index, $later))) {
+                    if ($later < $this->length()) {
+                        $this->minimizeChoice($later);
+                    }
+
                     break;
                 }
             }
