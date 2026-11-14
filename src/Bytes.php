@@ -14,11 +14,11 @@ use function chr;
 use function var_export;
 
 /**
- * Draws the bytes of a binary string, as SpanKind::Bytes describes them: each
- * byte in a span of the kind SpanKind::Element, the bytes that the minimum
- * length requires as their value, and every other byte as the choice 1
- * followed by its value, until the choice 0 ends the string or it has its
- * maximum length (see Repetition).
+ * Draws the bytes of a binary string, as SpanKind::Bytes describes them: the
+ * bytes that the minimum length requires as their value, each in a span of
+ * the kind SpanKind::RequiredElement, and every other byte as the choice 1
+ * followed by its value, in a span of the kind SpanKind::Element, until the
+ * choice 0 ends the string or it has its maximum length (see Repetition).
  *
  * The code that draws a binary string marks the span of the string, with
  * label() and the kind SpanKind::Bytes, around the bytes that draw() draws,

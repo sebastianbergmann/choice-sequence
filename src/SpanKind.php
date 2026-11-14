@@ -24,13 +24,14 @@ namespace SebastianBergmann\ChoiceSequence;
 enum SpanKind
 {
     /**
-     * A binary string that is drawn as a collection of bytes: each byte is a
-     * span of the kind Element. The bytes that the minimum length of the
-     * string requires come first and consist of the value of the byte, in
-     * the range [0, 255]. Every other byte consists of the choice 1 ("another
-     * byte"), whose maximum is 1, followed by the value of the byte. Unless
-     * the string has its maximum length, it ends with a span of the kind
-     * Element that consists of the choice 0, whose maximum is 1.
+     * A binary string that is drawn as a collection of bytes. The bytes that
+     * the minimum length of the string requires come first: each is a span of
+     * the kind RequiredElement that consists of the value of the byte, in the
+     * range [0, 255]. Every other byte is a span of the kind Element that
+     * consists of the choice 1 ("another byte"), whose maximum is 1, followed
+     * by the value of the byte. Unless the string has its maximum length, it
+     * ends with a span of the kind Element that consists of the choice 0,
+     * whose maximum is 1.
      *
      * A byte can be inserted where a choice decides whether there is another
      * byte: before a byte that consists of the choice 1 and its value, and
@@ -42,14 +43,15 @@ enum SpanKind
 
     /**
      * A string of Unicode characters that is drawn as a collection of
-     * characters: each character is a span of the kind Element. The
-     * characters that the minimum length of the string requires come first
-     * and consist of the index of the code point of the character in the
-     * order of CodePoints, in the range [0, CodePoints::LARGEST_INDEX].
-     * Every other character consists of the choice 1 ("another character"),
-     * whose maximum is 1, followed by the index of its code point. Unless
-     * the string has its maximum length, it ends with a span of the kind
-     * Element that consists of the choice 0, whose maximum is 1.
+     * characters. The characters that the minimum length of the string
+     * requires come first: each is a span of the kind RequiredElement that
+     * consists of the index of the code point of the character in the order
+     * of CodePoints, in the range [0, CodePoints::LARGEST_INDEX]. Every
+     * other character is a span of the kind Element that consists of the
+     * choice 1 ("another character"), whose maximum is 1, followed by the
+     * index of its code point. Unless the string has its maximum length, it
+     * ends with a span of the kind Element that consists of the choice 0,
+     * whose maximum is 1.
      *
      * A character can be inserted where a choice decides whether there is
      * another character, as a byte can be inserted into a binary string.
@@ -57,15 +59,37 @@ enum SpanKind
     case Characters;
 
     /**
-     * An element of a collection: the choices of the element, preceded by the
-     * choice 1 when it was decided by a choice that there is another element,
-     * or the choice 0 that ends the collection. The elements that the minimum
-     * size of the collection requires are not decided by a choice and come
-     * first.
+     * An element of a collection that a choice added: the choice 1 ("another
+     * element"), whose maximum is 1, followed by the choices of the element.
+     * A span of this kind that consists of the choice 0 ends the collection.
+     * The spans of the elements of a collection are part of the same span and
+     * have the same label.
+     *
+     * Deleting a span of this kind that starts with the choice 1 deletes the
+     * element, and replacing such a span and everything up to the end of the
+     * last span of the collection with the choice 0 deletes the element and
+     * the ones after it.
      *
      * Repetition draws the elements of a collection this way.
      */
     case Element;
+
+    /**
+     * An element of a collection that the minimum size of the collection
+     * requires: the choices of the element. No choice decided that there is
+     * such an element, so deleting its span does not delete it: the choices
+     * after the span are read as the element instead. The elements that the
+     * minimum size requires come first, and have the same label as the
+     * elements of the collection that are spans of the kind Element.
+     *
+     * Deleting a span of this kind together with the choice 1 that added the
+     * first element after the ones that the minimum size requires deletes
+     * the element: the element that this choice added takes the place of the
+     * last element that the minimum size requires.
+     *
+     * Repetition draws the elements of a collection this way.
+     */
+    case RequiredElement;
 
     /**
      * A value that later choices can refer to, the value that a step of a

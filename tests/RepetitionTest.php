@@ -53,7 +53,7 @@ final class RepetitionTest extends TestCase
         $this->assertSame([5, 6, 1, 7, 1, 8, 0], $source->sequence()->choices());
     }
 
-    public function testMarksEachElementAndTheChoiceThatEndsTheCollectionAsASpanOfTheKindElement(): void
+    public function testMarksEachElementThatAChoiceAddedAndTheChoiceThatEndsTheCollectionAsASpanOfTheKindElementAndEachElementThatTheMinimumSizeRequiresAsASpanOfTheKindRequiredElement(): void
     {
         $source = ChoiceSource::replay(new ChoiceSequence([5, 1, 7, 0]));
 
@@ -67,7 +67,7 @@ final class RepetitionTest extends TestCase
 
         $this->assertSame(
             [
-                [0, 1, 'element', SpanKind::Element],
+                [0, 1, 'element', SpanKind::RequiredElement],
                 [1, 3, 'element', SpanKind::Element],
                 [3, 4, 'element', SpanKind::Element],
             ],

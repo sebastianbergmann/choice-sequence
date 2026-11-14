@@ -17,10 +17,13 @@ use Closure;
  * size requires, then, as long as its maximum size permits, a choice whether
  * to add another element (1) or to stop (0), followed by that element.
  *
- * Each element, together with the choice that added it, is marked as a span
- * of the kind SpanKind::Element, so that deleting the span from the choice
- * sequence deletes the element, and tools that change choice sequences know
- * where elements start and end.
+ * Each element that a choice added is marked, together with that choice, as
+ * a span of the kind SpanKind::Element, as is the choice that ends the
+ * collection, so that deleting the span from the choice sequence deletes the
+ * element. Each element that the minimum size requires is marked as a span
+ * of the kind SpanKind::RequiredElement. This way, tools that change choice
+ * sequences know where elements start and end, and which choices decide how
+ * many of them there are.
  *
  * The choice to add another element is 1 with the same probability for each
  * element, so the sizes above the minimum size are distributed geometrically:
@@ -106,7 +109,11 @@ final readonly class Repetition
         $aimsForMaximumSize = null;
 
         while ($this->maximumSize === null || $size < $this->maximumSize) {
-            $source->startSpan($this->label, SpanKind::Element);
+            if ($size < $this->minimumSize) {
+                $source->startSpan($this->label, SpanKind::RequiredElement);
+            } else {
+                $source->startSpan($this->label, SpanKind::Element);
+            }
 
             if ($size >= $this->minimumSize) {
                 if ($aimsForMaximumSize === null) {
