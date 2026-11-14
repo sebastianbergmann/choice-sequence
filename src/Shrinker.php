@@ -43,7 +43,9 @@ use Closure;
  * checked, so composed generators shrink as well as the ones they are
  * composed of.
  *
- * Its passes are deleting spans, while the references after a span are
+ * Its passes are deleting the last elements of collections, searching for
+ * the smallest number of elements with a binary search (see SpanKind),
+ * deleting spans, while the references after a span are
  * changed so that they keep referring to the same values, and an element
  * that the minimum size of a collection requires is deleted together with
  * the choice that added the first other element (see SpanKind),
@@ -86,6 +88,13 @@ final class Shrinker
     private const int LARGEST_STEP                    = 16;
     private const int LARGEST_REDISTRIBUTION_DISTANCE = 4;
     private const int LARGEST_RAISING_DISTANCE        = 3;
+
+    /**
+     * How many of the last elements of a collection are deleted, one number
+     * of elements after the other, after the smallest number of elements
+     * was searched for with a binary search.
+     */
+    private const int LARGEST_NUMBER_OF_LAST_ELEMENTS = 8;
 
     /**
      * How many of the values that are left when a span is deleted, the ones
@@ -160,13 +169,14 @@ final class Shrinker
     private array $requiredElements = [];
 
     /**
-     * The first element that a choice added of each collection that has
-     * one, by the span that the elements of the collection are part of and
-     * their label.
+     * The collections that a choice added an element to, in the order of
+     * the first of these elements, by the span that the elements of the
+     * collection are part of and their label: the elements that a choice
+     * added, and the choice after the last choice of the collection.
      *
-     * @var array<string, Span>
+     * @var array<string, array{elements: non-empty-list<Span>, end: non-negative-int}>
      */
-    private array $firstElements = [];
+    private array $collections = [];
 
     /**
      * @param Closure(ChoiceSequence): ?ChoiceSequence $test                    replays a candidate and returns the choice
@@ -202,6 +212,7 @@ final class Shrinker
         $passes = [];
 
         foreach ([
+            $this->deleteLastElementsOfCollections(...),
             $this->deleteSpans(...),
             $this->replaceSpansWithDescendants(...),
             $this->moveValuesToLaterValuesWithTheSameLabel(...),
@@ -264,6 +275,120 @@ final class Shrinker
     }
 
     /**
+     * Replacing an element that a choice added to a collection, and
+     * everything up to the end of the collection, with the choice that ends
+     * a collection deletes the element and the ones after it. The smallest
+     * number of elements that keeps the counterexample failing is searched
+     * for with a binary search, so that a collection with many elements is
+     * shortened in few attempts, where deleting its elements one after the
+     * other needs an attempt for each of them.
+     *
+     * A binary search ends at a number of elements that only happens to
+     * keep the counterexample failing when it does not fail for every
+     * larger number of elements, when the number of elements has to be
+     * divisible by a number, for instance. This is why some of the last
+     * elements are deleted afterwards, one number of elements after the
+     * other.
+     */
+    private function deleteLastElementsOfCollections(): void
+    {
+        $index = 0;
+
+        while (!$this->isStopped()) {
+            $this->findElements();
+
+            $collections = array_values($this->collections);
+
+            if (!isset($collections[$index])) {
+                return;
+            }
+
+            $start = $collections[$index]['elements'][0]->start();
+
+            $this->searchForSmallestNumberOfElements($collections[$index]);
+
+            do {
+                $deleted = $this->deleteSomeOfTheLastElements($index, $start);
+            } while ($deleted);
+
+            // a collection none of whose elements is left is not found
+            // again, the collection after it has its index then
+            if ($this->collectionAt($index, $start) !== null) {
+                $index++;
+            }
+        }
+    }
+
+    /**
+     * @param array{elements: non-empty-list<Span>, end: non-negative-int} $collection
+     */
+    private function searchForSmallestNumberOfElements(array $collection): void
+    {
+        // every candidate keeps the choices before the element that it
+        // deletes, which are the ones of the sequence that the search
+        // started with
+        $choices = $this->current->choices();
+        $lower   = -1;
+        $upper   = count($collection['elements']);
+
+        while ($upper - $lower > 1 && !$this->isStopped()) {
+            $middle = $lower + intdiv($upper - $lower, 2);
+
+            assert($middle >= 0);
+
+            if ($this->consider(self::withoutElementsFrom($choices, $collection, $middle))) {
+                $upper = $middle;
+            } else {
+                $lower = $middle;
+            }
+        }
+    }
+
+    /**
+     * @param non-negative-int $index the index of the collection
+     * @param non-negative-int $start the first choice of the first element that a choice added to the collection
+     */
+    private function deleteSomeOfTheLastElements(int $index, int $start): bool
+    {
+        $collection = $this->collectionAt($index, $start);
+
+        if ($collection === null) {
+            return false;
+        }
+
+        $numberOfElements = count($collection['elements']);
+
+        $first = max(0, $numberOfElements - self::LARGEST_NUMBER_OF_LAST_ELEMENTS);
+
+        for ($element = $numberOfElements - 1; $element >= $first; $element--) {
+            if ($this->consider(self::withoutElementsFrom($this->current->choices(), $collection, $element))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param non-negative-int $index
+     * @param non-negative-int $start
+     *
+     * @return ?array{elements: non-empty-list<Span>, end: non-negative-int}
+     */
+    private function collectionAt(int $index, int $start): ?array
+    {
+        $this->findElements();
+
+        $collections = array_values($this->collections);
+
+        if (!isset($collections[$index]) || $collections[$index]['elements'][0]->start() !== $start) {
+            return null;
+        }
+
+        return $collections[$index];
+    }
+
+    /**
      * Deleting the span of an element of a collection deletes the element.
      * Longer spans are tried first.
      */
@@ -310,14 +435,14 @@ final class Shrinker
 
         $collection = self::collectionOf($this->requiredElements[$key]);
 
-        if (!isset($this->firstElements[$collection])) {
+        if (!isset($this->collections[$collection])) {
             return false;
         }
 
         $choices = $this->current->choices();
 
         // the choice that added the element comes after the span
-        array_splice($choices, $this->firstElements[$collection]->start(), 1);
+        array_splice($choices, $this->collections[$collection]['elements'][0]->start(), 1);
         array_splice($choices, $span->start(), $span->length());
 
         return $this->consider($choices);
@@ -336,7 +461,9 @@ final class Shrinker
         $this->sequenceOfElements = $this->current;
         $this->elements           = [];
         $this->requiredElements   = [];
-        $this->firstElements      = [];
+        $this->collections        = [];
+
+        $ends = [];
 
         foreach ($this->current->spans() as $span) {
             if ($span->kind() === SpanKind::RequiredElement) {
@@ -345,9 +472,19 @@ final class Shrinker
                 continue;
             }
 
+            if ($span->kind() !== SpanKind::Element) {
+                continue;
+            }
+
+            $collection = self::collectionOf($span);
+
+            if (!isset($ends[$collection]) || $ends[$collection] < $span->end()) {
+                $ends[$collection] = $span->end();
+            }
+
             // a span of this kind that starts with the choice 0 ends its
             // collection
-            if ($span->kind() === SpanKind::Element && $span->length() > 0 && $this->choiceAt($span->start()) === 1) {
+            if ($span->length() > 0 && $this->choiceAt($span->start()) === 1) {
                 $this->elements[] = $span;
             }
         }
@@ -360,9 +497,16 @@ final class Shrinker
         foreach ($this->elements as $element) {
             $collection = self::collectionOf($element);
 
-            if (!isset($this->firstElements[$collection])) {
-                $this->firstElements[$collection] = $element;
+            if (isset($this->collections[$collection])) {
+                $this->collections[$collection]['elements'][] = $element;
+
+                continue;
             }
+
+            // the end of the collection was found with its first element
+            assert(isset($ends[$collection]));
+
+            $this->collections[$collection] = ['elements' => [$element], 'end' => $ends[$collection]];
         }
     }
 
@@ -1886,6 +2030,24 @@ final class Shrinker
         $choices = $this->current->choices();
 
         array_splice($choices, $index, 1, [$value]);
+
+        return $choices;
+    }
+
+    /**
+     * @param list<non-negative-int>                                       $choices
+     * @param array{elements: non-empty-list<Span>, end: non-negative-int} $collection
+     * @param non-negative-int                                             $element    the index of the first element that is deleted
+     *
+     * @return list<non-negative-int>
+     */
+    private static function withoutElementsFrom(array $choices, array $collection, int $element): array
+    {
+        assert(isset($collection['elements'][$element]));
+
+        $start = $collection['elements'][$element]->start();
+
+        array_splice($choices, $start, $collection['end'] - $start, [0]);
 
         return $choices;
     }

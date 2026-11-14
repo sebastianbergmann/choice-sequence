@@ -25,6 +25,7 @@ use function in_array;
 use function min;
 use function preg_match;
 use ArrayObject;
+use Closure;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Small;
@@ -33,7 +34,12 @@ use PHPUnit\Framework\TestCase;
 
 #[CoversClass(Shrinker::class)]
 #[CoversClass(ShrinkingResult::class)]
+#[UsesClass(BernoulliDistribution::class)]
 #[UsesClass(ChoiceSequence::class)]
+#[UsesClass(ChoiceSource::class)]
+#[UsesClass(ExactDistribution::class)]
+#[UsesClass(Repetition::class)]
+#[UsesClass(UniformDistribution::class)]
 #[UsesClass(Span::class)]
 #[Small]
 final class ShrinkerTest extends TestCase
@@ -557,6 +563,56 @@ final class ShrinkerTest extends TestCase
 
         $this->assertSame([1, 5], $result->sequence()->choices());
         $this->assertSame(1, $result->numberOfSteps());
+    }
+
+    public function testSearchesForTheSmallestNumberOfElementsOfACollectionWithABinarySearch(): void
+    {
+        $candidates = [];
+
+        $shrinker = $this->shrinkerOfLists(
+            [[0, null]],
+            static fn (array $lists): bool => count($lists[0]) >= 20,
+            $candidates,
+        );
+
+        $result = $shrinker->shrink(self::lists(new ChoiceSequence([...array_fill(0, 80, 1), 0]), [[0, null]])[0]);
+
+        $this->assertSame([array_fill(0, 20, 0)], self::lists($result->sequence(), [[0, null]])[1]);
+        $this->assertSame([19, 29, 24, 21, 20], self::sizesOfFirstLists(array_slice($candidates, 0, 5)));
+    }
+
+    public function testDeletesSomeOfTheLastElementsOfACollectionAfterTheBinarySearchForItsSmallestNumberOfElements(): void
+    {
+        $candidates = [];
+
+        // the binary search ends without deleting an element, as it does
+        // not try a number of elements that is divisible by 5
+        $shrinker = $this->shrinkerOfLists(
+            [[0, null]],
+            static fn (array $lists): bool => $lists[0] !== [] && count($lists[0]) % 5 === 0,
+            $candidates,
+        );
+
+        $result = $shrinker->shrink(self::lists(new ChoiceSequence([...array_fill(0, 20, 1), 0]), [[0, null]])[0]);
+
+        $this->assertSame([array_fill(0, 5, 0)], self::lists($result->sequence(), [[0, null]])[1]);
+        $this->assertSame([4, 7, 8, 9, 6, 5, 3, 2, 1, 0], self::sizesOfFirstLists(array_slice($candidates, 0, 10)));
+    }
+
+    public function testDeletesTheLastElementsOfTheCollectionAfterACollectionNoneOfWhoseElementsIsLeft(): void
+    {
+        $candidates = [];
+
+        $shrinker = $this->shrinkerOfLists(
+            [[0, null], [0, null]],
+            static fn (array $lists): bool => isset($lists[1]) && count($lists[1]) >= 2,
+            $candidates,
+        );
+
+        $result = $shrinker->shrink(self::lists(new ChoiceSequence([1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 0]), [[0, null], [0, null]])[0]);
+
+        $this->assertSame([[], [0, 0]], self::lists($result->sequence(), [[0, null], [0, null]])[1]);
+        $this->assertSame([[[1], [1, 1, 1]], [[], [1, 1, 1]], [[], [1]], [[], [1, 1]]], array_slice($candidates, 0, 4));
     }
 
     public function testDeletesAnElementThatTheMinimumSizeOfACollectionRequiresTogetherWithTheChoiceThatAddedTheFirstOtherElement(): void
@@ -1437,6 +1493,82 @@ final class ShrinkerTest extends TestCase
         }
 
         return [new ChoiceSequence($choices, $spans, $maxima), implode(',', $steps)];
+    }
+
+    /**
+     * @param non-empty-list<array{non-negative-int, ?non-negative-int}> $sizes      the minimum size and the maximum size of each list
+     * @param Closure(non-empty-list<list<int>>): bool                   $falsifies
+     * @param list<non-empty-list<list<int>>>                            $candidates the lists that the candidates were replayed as
+     */
+    private function shrinkerOfLists(array $sizes, Closure $falsifies, array &$candidates): Shrinker
+    {
+        return new Shrinker(
+            static function (ChoiceSequence $candidate) use ($sizes, $falsifies, &$candidates): ?ChoiceSequence
+            {
+                [$sequence, $lists] = self::lists($candidate, $sizes);
+
+                $candidates[] = $lists;
+
+                if (!$falsifies($lists)) {
+                    return null;
+                }
+
+                return $sequence;
+            },
+            1000,
+        );
+    }
+
+    /**
+     * Replays the choices as lists of integers between 0 and 9, as
+     * Repetition draws the elements of a collection.
+     *
+     * @param non-empty-list<array{non-negative-int, ?non-negative-int}> $sizes the minimum size and the maximum size of each list
+     *
+     * @return array{ChoiceSequence, non-empty-list<list<int>>} the choices that were consumed, with their spans, and the lists
+     */
+    private static function lists(ChoiceSequence $candidate, array $sizes): array
+    {
+        $source = ChoiceSource::replay($candidate);
+        $lists  = [];
+
+        foreach ($sizes as $index => [$minimumSize, $maximumSize]) {
+            $list = [];
+
+            $source->startSpan('list' . $index);
+
+            new Repetition('element', $minimumSize, $maximumSize)->repeat(
+                $source,
+                static function () use ($source, &$list): bool
+                {
+                    $list[] = $source->draw(9, new UniformDistribution);
+
+                    return true;
+                },
+            );
+
+            $source->endSpan();
+
+            $lists[] = $list;
+        }
+
+        return [$source->sequence(), $lists];
+    }
+
+    /**
+     * @param list<non-empty-list<list<int>>> $candidates
+     *
+     * @return list<non-negative-int>
+     */
+    private static function sizesOfFirstLists(array $candidates): array
+    {
+        $sizes = [];
+
+        foreach ($candidates as $lists) {
+            $sizes[] = count($lists[0]);
+        }
+
+        return $sizes;
     }
 
     /**
