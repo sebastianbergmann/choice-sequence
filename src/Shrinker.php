@@ -46,6 +46,7 @@ use Closure;
  *
  * Its passes are deleting the last elements of collections, searching for
  * the smallest number of elements with a binary search (see SpanKind),
+ * setting blocks of consecutive choices to 0,
  * deleting spans, while the references after a span are
  * changed so that they keep referring to the same values, and an element
  * that the minimum size of a collection requires is deleted together with
@@ -53,7 +54,7 @@ use Closure;
  * replacing spans with shorter spans they
  * contain that have the same label, moving the values of spans that consist
  * of one choice into the later values of spans with the same label as far
- * as these can take them, setting blocks of consecutive choices to 0,
+ * as these can take them,
  * deleting blocks of choices, minimizing individual choices by trying
  * small values and then searching for the smallest value with a binary
  * search, redistributing pairs of nearby choices by moving as much as
@@ -251,10 +252,10 @@ final class Shrinker
 
         foreach ([
             $this->deleteLastElementsOfCollections(...),
+            $this->zeroBlocks(...),
             $this->deleteSpans(...),
             $this->replaceSpansWithDescendants(...),
             $this->moveValuesToLaterValuesWithTheSameLabel(...),
-            $this->zeroBlocks(...),
             $this->deleteBlocks(...),
             $this->minimizeChoices(...),
             $this->redistributeChoices(...),
@@ -1029,11 +1030,15 @@ final class Shrinker
     }
 
     /**
-     * Blocks are set to 0 before blocks are deleted, because a collection
-     * that has its smallest size keeps the attempts to delete its choices
-     * from succeeding, and these attempts would use up what the attempts to
-     * set its choices to 0 need. A block that was set to 0 is skipped, so that
-     * the next attempt does not overlap with it.
+     * Blocks are set to 0 before spans and blocks are deleted, because a
+     * collection that has its smallest size keeps the attempts to delete its
+     * choices from succeeding, and these attempts would use up what the
+     * attempts to set its choices to 0 need. Deleting one of its elements
+     * that have the same choices leaves the same choices as deleting another
+     * one, which is not tried again, so that elements that were set to 0 are
+     * tried to be deleted in one attempt rather than in one for each of
+     * them. A block that was set to 0 is skipped, so that the next attempt
+     * does not overlap with it.
      */
     private function zeroBlocks(): void
     {

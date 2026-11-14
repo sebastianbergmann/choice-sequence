@@ -797,6 +797,33 @@ final class ShrinkerTest extends TestCase
         }
     }
 
+    public function testSetsTheChoicesOfTheElementsOfACollectionToZeroBeforeItDeletesTheElementsSoThatDeletingAnyOfThemIsOneAttempt(): void
+    {
+        $candidates = [];
+
+        $shrinker = $this->shrinkerOfLists(
+            [[0, null]],
+            static fn (array $lists): bool => count($lists[0]) >= 8,
+            $candidates,
+        );
+
+        $result = $shrinker->shrink(self::lists(new ChoiceSequence([1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8, 0]), [[0, null]])[0]);
+
+        $this->assertSame([array_fill(0, 8, 0)], self::lists($result->sequence(), [[0, null]])[1]);
+
+        $listsOfSevenElements = [];
+
+        foreach ($candidates as $lists) {
+            if (count($lists[0]) === 7) {
+                $listsOfSevenElements[] = $lists[0];
+            }
+        }
+
+        // the last element is deleted before the choices are set to 0, and
+        // then one of the elements, which are equal
+        $this->assertSame([[1, 2, 3, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0]], $listsOfSevenElements);
+    }
+
     public function testDoesNotSetABlockOfChoicesToZeroWhoseOnlyChoicesThatAreNotZeroAddedElementsToACollection(): void
     {
         $candidates = [];
@@ -1506,11 +1533,12 @@ final class ShrinkerTest extends TestCase
         $shrinker = $this->shrinkerOfStepsThatReferToValues('/use 7/', $candidates);
 
         // the values 7 and 5 are added, the second one is consumed, and the
-        // last step refers to the first one: when the second one is not
-        // consumed, the first one is the second one counted from the last one
+        // last step refers to the first one: when the second one, which is
+        // set to 0 before a step is deleted, is not consumed, the first one
+        // is the second one counted from the last one
         $result = $shrinker->shrink(self::stepsThatReferToValues([1, 0, 7, 0, 1, 0, 5, 0, 1, 2, 0, 1, 1, 0])[0]);
 
-        $this->assertContains([1, 0, 7, 0, 1, 0, 5, 0, 1, 1, 1], $candidates);
+        $this->assertContains([1, 0, 7, 0, 1, 0, 0, 0, 1, 1, 1], $candidates);
         $this->assertSame([1, 0, 7, 0, 1, 1, 0], $result->sequence()->choices());
     }
 
