@@ -8,7 +8,7 @@ Library for drawing, replaying, shrinking, and storing choice sequences.
 
 A choice sequence is the list of non-negative integers from which a value was generated: whenever the code that generates the value has to decide something, such as the length of a list or the next character of a string, it draws a choice, and 0 stands for the simplest option. Replaying the same choices generates the same value, so a value can be made simpler by making its choice sequence simpler: shorter, or lexicographically smaller.
 
-This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected. It also draws the collections and binary strings whose choices tools have to tell apart.
+This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected. It also draws the collections, binary strings, and references to values whose choices tools have to tell apart.
 
 ## Installation
 
@@ -91,7 +91,7 @@ use SebastianBergmann\ChoiceSequence\SpanKind;
 $source->startSpan(Label::of('bytes', '0', '4096'), SpanKind::Bytes);
 ```
 
-### Collections and binary strings
+### Collections, binary strings, and pools of values
 
 The encodings that the kinds of spans describe are implemented by this library, so that every tool that uses it draws these values in the same way.
 
@@ -128,6 +128,20 @@ $source->startSpan($bytes->label(), SpanKind::Bytes);
 $string = $bytes->draw($source);
 
 $source->endSpan();
+```
+
+`Pool` holds the values that choices refer to, the values that the steps of a state machine produce and that later steps take, for instance. It marks a value that is added with a span of the kind `SpanKind::Referable`, and draws a reference to a value, its position counted from the value that was added last, in a span of the kind `SpanKind::Reference` or `SpanKind::ConsumingReference`:
+
+```php
+use SebastianBergmann\ChoiceSequence\Label;
+use SebastianBergmann\ChoiceSequence\Pool;
+
+$pool = new Pool(Label::of('pool', 'accounts'));
+
+$pool->add($source, $account);
+
+$account = $pool->refer($source);
+$account = $pool->consume($source);
 ```
 
 ### Shrinking a choice sequence

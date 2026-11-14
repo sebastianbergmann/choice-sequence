@@ -72,6 +72,9 @@ enum SpanKind
      * state machine added to a pool of values, for instance. Spans of the
      * kinds Reference and ConsumingReference that have the same label as
      * this span and start after its last choice can refer to the value.
+     *
+     * Pool marks the values that are added to it this way, and draws the
+     * references to them.
      */
     case Referable;
 
