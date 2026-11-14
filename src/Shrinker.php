@@ -58,12 +58,21 @@ use Closure;
  * round before, so that the attempts are spent on the passes that are most
  * likely to succeed.
  *
+ * Only when none of these passes succeeds, choices are lowered in steps: by
+ * a small amount and then by as many multiples of the amount that kept the
+ * counterexample failing as possible. This finds the smallest counterexample
+ * of a property that depends on the remainder of a division, for which a
+ * binary search ends at a value that only happens to fail. It needs attempts
+ * that are made in vain for every other property, which is why the other
+ * passes are tried first. When it succeeds, the other passes are repeated.
+ *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
 final class Shrinker
 {
     private const array BLOCK_SIZES                   = [8, 4, 2, 1];
     private const int LARGEST_SMALL_VALUE             = 3;
+    private const int LARGEST_STEP                    = 16;
     private const int LARGEST_REDISTRIBUTION_DISTANCE = 4;
     private const int LARGEST_RAISING_DISTANCE        = 3;
 
@@ -160,23 +169,25 @@ final class Shrinker
         }
 
         do {
-            $numberOfSteps = 0;
+            do {
+                $numberOfSteps = 0;
 
-            foreach ($passes as $index => $pass) {
-                $numberOfStepsOfPass = $this->numberOfStepsOf($pass['pass']);
+                foreach ($passes as $index => $pass) {
+                    $numberOfStepsOfPass = $this->numberOfStepsOf($pass['pass']);
 
-                $passes[$index]['numberOfSteps'] = $numberOfStepsOfPass;
+                    $passes[$index]['numberOfSteps'] = $numberOfStepsOfPass;
 
-                $numberOfSteps += $numberOfStepsOfPass;
-            }
+                    $numberOfSteps += $numberOfStepsOfPass;
+                }
 
-            // the sort is stable, so passes that made the counterexample
-            // simpler equally often keep their order
-            usort(
-                $passes,
-                static fn (array $a, array $b): int => $b['numberOfSteps'] <=> $a['numberOfSteps'],
-            );
-        } while ($numberOfSteps > 0 && !$this->isStopped());
+                // the sort is stable, so passes that made the counterexample
+                // simpler equally often keep their order
+                usort(
+                    $passes,
+                    static fn (array $a, array $b): int => $b['numberOfSteps'] <=> $a['numberOfSteps'],
+                );
+            } while ($numberOfSteps > 0 && !$this->isStopped());
+        } while ($this->numberOfStepsOf($this->lowerChoicesInSteps(...)) > 0 && !$this->isStopped());
 
         return new ShrinkingResult(
             $this->current,
@@ -528,6 +539,162 @@ final class Shrinker
 
             $upper = $this->choiceAt($index);
         }
+    }
+
+    /**
+     * A property such as $number % 15 !== 0 is falsified by every 15th value,
+     * so a binary search for the smallest value of a choice ends at a value
+     * whose predecessor does not falsify the property, which can be any
+     * multiple of 15. The values that such a property is falsified by are
+     * apart by a multiple of the divisor, which is found by lowering the
+     * choice in steps.
+     *
+     * A value that could not be lowered in steps is not tried again for the
+     * choices after the one that has it, so that a counterexample with many
+     * equal values, the elements of a list that all have to exceed the same
+     * value, for instance, does not use up the attempts.
+     */
+    private function lowerChoicesInSteps(): void
+    {
+        $notLowered = [];
+
+        for ($index = 0; $index < $this->length() && !$this->isStopped(); $index++) {
+            $choice = $this->choiceAt($index);
+
+            if (isset($notLowered[$choice])) {
+                continue;
+            }
+
+            if (!$this->lowerChoiceInSteps($index)) {
+                $notLowered[$choice] = true;
+            }
+        }
+    }
+
+    /**
+     * Lowers the choice by the smallest step that keeps the counterexample
+     * failing, and then by as many multiples of this step as possible. Values
+     * that are not larger than the largest small value are not tried, as
+     * minimizing the choice has tried them.
+     *
+     * The choice is lowered by another step afterwards only when it could be
+     * lowered by a further multiple of the step. A property whose outcome
+     * does not depend on its choices alone lets any step keep the
+     * counterexample failing by chance, and lowering the choice step by step
+     * would use up the attempts for it.
+     *
+     * @param non-negative-int $index
+     */
+    private function lowerChoiceInSteps(int $index): bool
+    {
+        $lowered = false;
+
+        do {
+            $choice = $this->choiceAt($index);
+            $step   = $this->stepThatLowers($index, $choice);
+
+            if ($step === null) {
+                break;
+            }
+
+            $lowered = true;
+
+            if ($index >= $this->length() || $this->choiceAt($index) !== $choice - $step) {
+                break;
+            }
+        } while ($this->lowerChoiceByMultiplesOf($index, $step) && $index < $this->length() && !$this->isStopped());
+
+        return $lowered;
+    }
+
+    /**
+     * @param non-negative-int $index
+     * @param non-negative-int $choice
+     *
+     * @return ?positive-int the smallest step by which the choice was lowered, null when it was not lowered
+     */
+    private function stepThatLowers(int $index, int $choice): ?int
+    {
+        for ($step = 1; $step <= self::LARGEST_STEP; $step++) {
+            $value = $choice - $step;
+
+            if ($value <= self::LARGEST_SMALL_VALUE) {
+                break;
+            }
+
+            if ($this->consider($this->withChoice($index, $value))) {
+                return $step;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Lowering the choice by the step kept the counterexample failing. When
+     * that is so because the property depends on the remainder of a division
+     * by the step, the smallest value that keeps the counterexample failing
+     * is the remainder of the choice, or that remainder plus the step when
+     * the property does not hold for small values. These two values are
+     * tried first. Otherwise, the amount by which the choice is lowered is
+     * doubled until the counterexample no longer fails and then halved until
+     * it is the step again, which lowers the choice by as many multiples of
+     * the step as a binary search finds.
+     *
+     * @param non-negative-int $index
+     * @param positive-int     $step
+     *
+     * @return bool whether the choice was lowered
+     */
+    private function lowerChoiceByMultiplesOf(int $index, int $step): bool
+    {
+        $choice    = $this->choiceAt($index);
+        $remainder = $choice % $step;
+
+        foreach ([$remainder, $remainder + $step] as $value) {
+            if ($value < $choice && $this->consider($this->withChoice($index, $value))) {
+                return true;
+            }
+        }
+
+        $lowered = false;
+        $amount  = $step;
+
+        while ($amount <= intdiv(PHP_INT_MAX, 2) && $this->lowerChoiceBy($index, $amount)) {
+            $lowered = true;
+            $amount *= 2;
+        }
+
+        while ($amount > $step) {
+            $amount = intdiv($amount, 2);
+
+            assert($amount >= 1);
+
+            if ($this->lowerChoiceBy($index, $amount)) {
+                $lowered = true;
+            }
+        }
+
+        return $lowered;
+    }
+
+    /**
+     * @param non-negative-int $index
+     * @param positive-int     $amount
+     */
+    private function lowerChoiceBy(int $index, int $amount): bool
+    {
+        if ($index >= $this->length()) {
+            return false;
+        }
+
+        $value = $this->choiceAt($index) - $amount;
+
+        if ($value < 0) {
+            return false;
+        }
+
+        return $this->consider($this->withChoice($index, $value));
     }
 
     /**

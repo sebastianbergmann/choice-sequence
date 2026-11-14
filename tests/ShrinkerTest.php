@@ -47,6 +47,19 @@ final class ShrinkerTest extends TestCase
     }
 
     /**
+     * @return array<string, array{non-negative-int, positive-int, non-negative-int, non-negative-int, non-negative-int}>
+     */
+    public static function loweredInStepsProvider(): array
+    {
+        return [
+            'to the remainder of the division'                                => [51, 15, 6, 0, 6],
+            'to the divisor when the remainder does not keep it failing'      => [45, 15, 0, 1, 15],
+            'by as many multiples of the divisor as keep it failing'          => [7000, 7, 0, 1001, 1001],
+            'by multiples of the divisor that are not larger than the choice' => [49, 7, 0, 21, 21],
+        ];
+    }
+
+    /**
      * @return array<string, array{list<non-negative-int>}>
      */
     public static function loweredChoiceWithoutSpansProvider(): array
@@ -712,6 +725,227 @@ final class ShrinkerTest extends TestCase
         );
 
         $this->assertSame([$smallest], $shrinker->shrink(new ChoiceSequence([$choice]))->sequence()->choices());
+    }
+
+    /**
+     * @param non-negative-int $choice
+     * @param positive-int     $divisor
+     * @param non-negative-int $remainder
+     * @param non-negative-int $threshold
+     * @param non-negative-int $smallest
+     */
+    #[DataProvider('loweredInStepsProvider')]
+    public function testLowersAChoiceInStepsWhenTheCounterexampleFailsForEveryValueWithTheSameRemainderOfADivision(int $choice, int $divisor, int $remainder, int $threshold, int $smallest): void
+    {
+        // a binary search ends at the choice, as none of the values that it
+        // tries has the remainder
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($divisor, $remainder, $threshold): ?ChoiceSequence
+            {
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 1 || $choices[0] < $threshold || $choices[0] % $divisor !== $remainder) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([$choice]));
+
+        $this->assertSame([$smallest], $result->sequence()->choices());
+        $this->assertFalse($result->budgetExhausted());
+    }
+
+    public function testDoesNotLowerAChoiceByAnotherStepWhenItCouldNotBeLoweredByAFurtherMultipleOfTheStep(): void
+    {
+        $candidates = [];
+
+        // lowering the choice by 4 keeps the counterexample failing, lowering
+        // it by 8 does not
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                if ($candidate->choices() !== [41]) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([45]));
+
+        $index = array_search([41], $candidates, true);
+
+        $this->assertIsInt($index);
+
+        // 5 is the remainder of the division of 41 by 4 plus 4, and 22 is the
+        // first value that the binary search of the passes that are repeated
+        // tries, rather than 40, which is one step below 41
+        $this->assertSame([[41], [5], [37], [22]], array_slice($candidates, $index, 4));
+        $this->assertSame([41], $result->sequence()->choices());
+    }
+
+    public function testRepeatsTheOtherPassesAfterAChoiceWasLoweredInSteps(): void
+    {
+        // the first choice has to be a multiple of 15, and the second choice
+        // can only be deleted when the first one is 15
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                $choices = $candidate->choices();
+
+                if ($choices === [] || $choices[0] === 0 || $choices[0] % 15 !== 0) {
+                    return null;
+                }
+
+                if ($choices[0] > 15 && count($choices) < 2) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $this->assertSame([15], $shrinker->shrink(new ChoiceSequence([45, 0]))->sequence()->choices());
+    }
+
+    public function testLowersChoicesInStepsOnlyWhenNoOtherPassMakesTheCounterexampleSimpler(): void
+    {
+        $candidates = [];
+
+        // the second choice can be minimized, the first one can only be
+        // lowered in steps
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 2 || $choices[0] === 0 || $choices[0] % 15 !== 0 || $choices[1] < 50) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([45, 100]));
+
+        $minimized      = array_search([45, 50], $candidates, true);
+        $loweredInSteps = array_search([30, 50], $candidates, true);
+
+        $this->assertSame([15, 50], $result->sequence()->choices());
+        $this->assertIsInt($minimized);
+        $this->assertIsInt($loweredInSteps);
+        $this->assertGreaterThan($minimized, $loweredInSteps);
+        $this->assertNotContains([30, 100], $candidates);
+    }
+
+    public function testDoesNotLowerAChoiceInStepsThatHasTheValueOfAnEarlierChoiceThatCouldNotBeLoweredInSteps(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 2 || $choices[0] < 100 || $choices[1] < 100) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([100, 100]));
+
+        // the values that are one and two below the choices are tried when
+        // the choices are minimized
+        $this->assertSame([100, 100], $result->sequence()->choices());
+        $this->assertContains([97, 100], $candidates);
+        $this->assertNotContains([100, 97], $candidates);
+    }
+
+    public function testStopsLoweringAChoiceInStepsThatTheConsumedChoiceSequenceNoLongerContains(): void
+    {
+        // lowering the second choice by 15 keeps the counterexample failing,
+        // and the replay does not consume the second choice then
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                if ($candidate->choices() === [1, 30]) {
+                    return new ChoiceSequence([1]);
+                }
+
+                return null;
+            },
+            1000,
+        );
+
+        $this->assertSame([1], $shrinker->shrink(new ChoiceSequence([1, 45]))->sequence()->choices());
+    }
+
+    public function testStopsLoweringAChoiceByMultiplesOfAStepThatTheConsumedChoiceSequenceNoLongerContains(): void
+    {
+        // lowering the second choice by 7 keeps the counterexample failing,
+        // and the replay does not consume the second choice when it is
+        // lowered by 7 once more
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate): ?ChoiceSequence
+            {
+                if ($candidate->choices() === [1, 42]) {
+                    return $candidate;
+                }
+
+                if ($candidate->choices() === [1, 35]) {
+                    return new ChoiceSequence([1]);
+                }
+
+                return null;
+            },
+            1000,
+        );
+
+        $this->assertSame([1], $shrinker->shrink(new ChoiceSequence([1, 49]))->sequence()->choices());
+    }
+
+    public function testDoesNotLowerAChoiceByMultiplesOfAStepWhenTheConsumedChoiceSequenceHasAnotherValueForIt(): void
+    {
+        $candidates = [];
+
+        // lowering the choice by 15 keeps the counterexample failing, and the
+        // replay consumes a smaller value for it then
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                if ($candidate->choices() === [130]) {
+                    return new ChoiceSequence([100]);
+                }
+
+                return null;
+            },
+            1000,
+        );
+
+        // 25 is the remainder of the division of 100 by 15 plus 15
+        $this->assertSame([100], $shrinker->shrink(new ChoiceSequence([145]))->sequence()->choices());
+        $this->assertNotContains([25], $candidates);
     }
 
     public function testMovesEverythingFromAChoiceToANearbyLaterChoiceWhenThatKeepsTheCounterexampleFailing(): void
