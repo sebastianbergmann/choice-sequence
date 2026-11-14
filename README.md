@@ -8,7 +8,7 @@ Library for drawing, replaying, shrinking, and storing choice sequences.
 
 A choice sequence is the list of non-negative integers from which a value was generated: whenever the code that generates the value has to decide something, such as the length of a list or the next character of a string, it draws a choice, and 0 stands for the simplest option. Replaying the same choices generates the same value, so a value can be made simpler by making its choice sequence simpler: shorter, or lexicographically smaller.
 
-This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected.
+This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected. It also draws the elements of collections, whose choices tools have to tell apart.
 
 ## Installation
 
@@ -89,6 +89,30 @@ use SebastianBergmann\ChoiceSequence\Label;
 use SebastianBergmann\ChoiceSequence\SpanKind;
 
 $source->startSpan(Label::of('bytes', '0', '4096'), SpanKind::Bytes);
+```
+
+### Collections
+
+The encoding of a collection that the kind `SpanKind::Element` describes is implemented by this library, so that every tool that uses it draws collections in the same way.
+
+`Repetition` draws the elements of a collection: the elements that its minimum size requires, and then, as long as its maximum size permits, a choice whether to add another element, followed by that element. Each element is a span of the kind `SpanKind::Element`. Some of the collections with a maximum size aim for it, so that this size is reached.
+
+```php
+use SebastianBergmann\ChoiceSequence\Label;
+use SebastianBergmann\ChoiceSequence\Repetition;
+use SebastianBergmann\ChoiceSequence\UniformDistribution;
+
+$elements = [];
+
+new Repetition(Label::of('element'), 0, 10)->repeat(
+    $source,
+    static function () use ($source, &$elements): bool
+    {
+        $elements[] = $source->draw(9, new UniformDistribution);
+
+        return true;
+    },
+);
 ```
 
 ### Shrinking a choice sequence

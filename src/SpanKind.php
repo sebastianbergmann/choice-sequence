@@ -60,6 +60,8 @@ enum SpanKind
      * or the choice 0 that ends the collection. The elements that the minimum
      * size of the collection requires are not decided by a choice and come
      * first.
+     *
+     * Repetition draws the elements of a collection this way.
      */
     case Element;
 
