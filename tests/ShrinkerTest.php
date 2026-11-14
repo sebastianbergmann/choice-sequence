@@ -56,6 +56,8 @@ final class ShrinkerTest extends TestCase
             'to the divisor when the remainder does not keep it failing'      => [45, 15, 0, 1, 15],
             'by as many multiples of the divisor as keep it failing'          => [7000, 7, 0, 1001, 1001],
             'by multiples of the divisor that are not larger than the choice' => [49, 7, 0, 21, 21],
+            'in steps of a power of two'                                      => [768, 256, 0, 1, 256],
+            'in steps of a power of ten'                                      => [700, 100, 0, 1, 100],
         ];
     }
 

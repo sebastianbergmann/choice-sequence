@@ -25,6 +25,7 @@ use function implode;
 use function intdiv;
 use function max;
 use function min;
+use function range;
 use function sort;
 use function usort;
 use Closure;
@@ -59,12 +60,13 @@ use Closure;
  * likely to succeed.
  *
  * Only when none of these passes succeeds, choices are lowered in steps: by
- * a small amount and then by as many multiples of the amount that kept the
- * counterexample failing as possible. This finds the smallest counterexample
- * of a property that depends on the remainder of a division, for which a
- * binary search ends at a value that only happens to fail. It needs attempts
- * that are made in vain for every other property, which is why the other
- * passes are tried first. When it succeeds, the other passes are repeated.
+ * a small amount, or by a power of two or of ten, and then by as many
+ * multiples of the amount that kept the counterexample failing as possible.
+ * This finds the smallest counterexample of a property that depends on the
+ * remainder of a division, for which a binary search ends at a value that
+ * only happens to fail. It needs attempts that are made in vain for every
+ * other property, which is why the other passes are tried first. When it
+ * succeeds, the other passes are repeated.
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
@@ -615,7 +617,7 @@ final class Shrinker
      */
     private function stepThatLowers(int $index, int $choice): ?int
     {
-        for ($step = 1; $step <= self::LARGEST_STEP; $step++) {
+        foreach ($this->stepsFor($choice) as $step) {
             $value = $choice - $step;
 
             if ($value <= self::LARGEST_SMALL_VALUE) {
@@ -628,6 +630,38 @@ final class Shrinker
         }
 
         return null;
+    }
+
+    /**
+     * The steps by which a choice is lowered, smallest first: every step up
+     * to the largest step, and the larger powers of two and of ten that are
+     * not larger than the choice, as a property often depends on the
+     * remainder of a division by such a number: on the last two digits of a
+     * number or on its lowest byte, for instance.
+     *
+     * @param non-negative-int $choice
+     *
+     * @return list<positive-int>
+     */
+    private function stepsFor(int $choice): array
+    {
+        $steps = range(1, self::LARGEST_STEP);
+
+        foreach ([2, 10] as $base) {
+            $step = $base;
+
+            while ($step <= intdiv($choice, $base)) {
+                $step *= $base;
+
+                if ($step > self::LARGEST_STEP) {
+                    $steps[] = $step;
+                }
+            }
+        }
+
+        sort($steps);
+
+        return $steps;
     }
 
     /**
