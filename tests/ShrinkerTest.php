@@ -11,6 +11,7 @@ namespace SebastianBergmann\ChoiceSequence;
 
 use const PHP_INT_MAX;
 use function array_fill;
+use function array_first;
 use function array_filter;
 use function array_key_exists;
 use function array_search;
@@ -643,6 +644,102 @@ final class ShrinkerTest extends TestCase
 
         $this->assertSame([[], [0, 0]], self::lists($result->sequence(), [[0, null], [0, null]])[1]);
         $this->assertSame([[[1], [1, 1, 1]], [[], [1, 1, 1]], [[], [1]], [[], [1, 1]]], array_slice($candidates, 0, 4));
+    }
+
+    public function testDoesNotLowerAChoiceThatAddedAnElementToACollection(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        // two collections, the second one with two elements that are equal
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [1, 5, 0, 1, 6, 1, 6, 0],
+                [
+                    new Span(0, 3, 'first', null),
+                    new Span(0, 2, 'element', 0, SpanKind::Element),
+                    new Span(2, 3, 'element', 0, SpanKind::Element),
+                    new Span(3, 8, 'second', null),
+                    new Span(3, 5, 'element', 3, SpanKind::Element),
+                    new Span(5, 7, 'element', 3, SpanKind::Element),
+                    new Span(7, 8, 'element', 3, SpanKind::Element),
+                ],
+                [1, 9, 1, 1, 9, 1, 9, 1],
+            ),
+        );
+
+        // the choices of the elements are lowered
+        $this->assertContains([1, 0, 0, 1, 0, 1, 0, 0], $candidates);
+        $this->assertContains([1, 0, 0, 1, 6, 1, 6, 0], $candidates);
+        $this->assertContains([1, 5, 0, 1, 0, 1, 6, 0], $candidates);
+        $this->assertContains([1, 5, 0, 1, 6, 1, 0, 0], $candidates);
+
+        foreach ($candidates as $candidate) {
+            // only deleting the element of the first collection leaves the
+            // choice that ends it as the first choice
+            if ($candidate !== [0, 1, 6, 1, 6, 0]) {
+                $this->assertNotSame(0, array_first($candidate), implode(',', $candidate));
+            }
+
+            // candidates with fewer choices have deleted choices
+            if (count($candidate) === 8) {
+                $this->assertSame([1, 1, 1], [$candidate[0], $candidate[3], $candidate[5]], implode(',', $candidate));
+            }
+        }
+    }
+
+    public function testDoesNotSetABlockOfChoicesToZeroWhoseOnlyChoicesThatAreNotZeroAddedElementsToACollection(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [1, 0, 1, 0, 0],
+                [
+                    new Span(0, 2, 'element', null, SpanKind::Element),
+                    new Span(2, 4, 'element', null, SpanKind::Element),
+                    new Span(4, 5, 'element', null, SpanKind::Element),
+                ],
+            ),
+        );
+
+        // setting such a block to zero does not change the choice sequence
+        $this->assertNotContains([1, 0, 1, 0, 0], $candidates);
+    }
+
+    public function testSetsABlockOfChoicesToZeroThatContainsChoicesThatAddedElementsToACollection(): void
+    {
+        $candidates = [];
+
+        $shrinker = $this->shrinkerOfLists(
+            [[0, null]],
+            static fn (array $lists): bool => count($lists[0]) >= 4,
+            $candidates,
+        );
+
+        $result = $shrinker->shrink(self::lists(new ChoiceSequence([1, 5, 1, 5, 1, 5, 1, 5, 0]), [[0, null]])[0]);
+
+        $this->assertSame([1, 0, 1, 0, 1, 0, 1, 0, 0], $result->sequence()->choices());
+        $this->assertSame(1, $result->numberOfSteps());
     }
 
     public function testDeletesAnElementThatTheMinimumSizeOfACollectionRequiresTogetherWithTheChoiceThatAddedTheFirstOtherElement(): void

@@ -11,7 +11,6 @@ namespace SebastianBergmann\ChoiceSequence;
 
 use const PHP_INT_MAX;
 use function array_diff;
-use function array_fill;
 use function array_key_exists;
 use function array_map;
 use function array_reverse;
@@ -67,6 +66,12 @@ use Closure;
  * with the passes that made the counterexample simpler most often in the
  * round before, so that the attempts are spent on the passes that are most
  * likely to succeed.
+ *
+ * The passes that lower choices do not change the choice that added an
+ * element to a collection: lowering it ends the collection, which deletes
+ * the element and the ones after it, and that is what deleting the last
+ * elements of collections does in far fewer attempts than these passes need
+ * for a collection with many elements.
  *
  * Only when none of these passes succeeds, choices are lowered in steps: by
  * a small amount, or by a power of two or of ten, and then by as many
@@ -158,6 +163,14 @@ final class Shrinker
      * @var list<Span>
      */
     private array $elements = [];
+
+    /**
+     * The choices that added an element to a collection: the first choices
+     * of the elements that a choice added.
+     *
+     * @var array<non-negative-int, true>
+     */
+    private array $choicesThatAddedElements = [];
 
     /**
      * The elements that the minimum size of a collection requires (see
@@ -458,10 +471,11 @@ final class Shrinker
             return;
         }
 
-        $this->sequenceOfElements = $this->current;
-        $this->elements           = [];
-        $this->requiredElements   = [];
-        $this->collections        = [];
+        $this->sequenceOfElements       = $this->current;
+        $this->elements                 = [];
+        $this->choicesThatAddedElements = [];
+        $this->requiredElements         = [];
+        $this->collections              = [];
 
         $ends = [];
 
@@ -495,6 +509,8 @@ final class Shrinker
         );
 
         foreach ($this->elements as $element) {
+            $this->choicesThatAddedElements[$element->start()] = true;
+
             $collection = self::collectionOf($element);
 
             if (isset($this->collections[$collection])) {
@@ -997,6 +1013,10 @@ final class Shrinker
      */
     private function minimizeChoice(int $index): void
     {
+        if ($this->addedElement($index)) {
+            return;
+        }
+
         $choice                = $this->choiceAt($index);
         $valueBelowDoesNotFail = $choice > 0 && $this->hasBeenTried($this->withChoice($index, $choice - 1));
 
@@ -1237,6 +1257,10 @@ final class Shrinker
     {
         for ($first = 0; $first < $this->length() && !$this->isStopped(); $first++) {
             for ($second = $first + 1; $second <= $first + self::LARGEST_REDISTRIBUTION_DISTANCE && $second < $this->length() && !$this->isStopped(); $second++) {
+                if ($this->addedElement($first) || $this->addedElement($second)) {
+                    continue;
+                }
+
                 $this->redistribute($first, $second);
             }
         }
@@ -1309,8 +1333,12 @@ final class Shrinker
     {
         for ($index = 0; $index < $this->length() && !$this->isStopped(); $index++) {
             for ($later = $index + 1; $later <= $index + self::LARGEST_RAISING_DISTANCE && $later < $this->length(); $later++) {
-                if ($this->choiceAt($index) === 0) {
+                if ($this->choiceAt($index) === 0 || $this->addedElement($index)) {
                     break;
+                }
+
+                if ($this->addedElement($later)) {
+                    continue;
                 }
 
                 if ($this->consider($this->withLoweredAndRaisedChoice($index, $later))) {
@@ -1344,7 +1372,7 @@ final class Shrinker
         for ($index = 0; $index < $this->length() && !$this->isStopped(); $index++) {
             $amount = 1;
 
-            while ($index < $this->length() && $this->choiceAt($index) > 0) {
+            while ($index < $this->length() && $this->choiceAt($index) > 0 && !$this->addedElement($index)) {
                 if ($this->lowerChoiceDeletingLaterSpans($index, $amount, $groups)) {
                     $groups = $this->groupsOfSpans();
                     $amount *= 2;
@@ -1531,6 +1559,12 @@ final class Shrinker
 
                 foreach ($spans as $span) {
                     $indexes[] = $span->start() + $offset;
+                }
+
+                // spans with the same choices that start with a choice that
+                // added an element are elements of collections
+                if ($this->addedElement($indexes[0])) {
+                    continue;
                 }
 
                 $this->lowerTogether($indexes);
@@ -1846,8 +1880,8 @@ final class Shrinker
      */
     private function isZero(int $start, int $size): bool
     {
-        foreach (array_slice($this->current->choices(), $start, $size) as $choice) {
-            if ($choice !== 0) {
+        foreach (array_slice($this->current->choices(), $start, $size, true) as $index => $choice) {
+            if ($choice !== 0 && !$this->addedElement($index)) {
                 return false;
             }
         }
@@ -1967,8 +2001,17 @@ final class Shrinker
     private function withZeroedChoices(int $start, int $size): array
     {
         $choices = $this->current->choices();
+        $zeroed  = [];
 
-        array_splice($choices, $start, $size, array_fill(0, $size, 0));
+        for ($index = $start; $index < $start + $size; $index++) {
+            if ($this->addedElement($index)) {
+                $zeroed[] = 1;
+            } else {
+                $zeroed[] = 0;
+            }
+        }
+
+        array_splice($choices, $start, $size, $zeroed);
 
         return $choices;
     }
@@ -2037,6 +2080,18 @@ final class Shrinker
         array_splice($choices, $index, 1, [$value]);
 
         return $choices;
+    }
+
+    /**
+     * Whether the choice added an element to a collection. Lowering such a
+     * choice ends the collection, which deleting the last elements of the
+     * collection does as well.
+     */
+    private function addedElement(int $index): bool
+    {
+        $this->findElements();
+
+        return isset($this->choicesThatAddedElements[$index]);
     }
 
     /**
