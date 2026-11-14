@@ -35,6 +35,8 @@ enum SpanKind
      * A byte can be inserted where a choice decides whether there is another
      * byte: before a byte that consists of the choice 1 and its value, and
      * before the span that ends the string.
+     *
+     * Bytes draws the bytes of a binary string this way.
      */
     case Bytes;
 
