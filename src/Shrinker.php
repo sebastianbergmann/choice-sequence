@@ -66,7 +66,9 @@ use Closure;
  * remainder of a division, for which a binary search ends at a value that
  * only happens to fail. It needs attempts that are made in vain for every
  * other property, which is why the other passes are tried first. When it
- * succeeds, the other passes are repeated.
+ * succeeds, the other passes are repeated. A choice is lowered in steps right
+ * away when a binary search lowers it below a value that is known not to
+ * keep the counterexample failing, as only such a property allows that.
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
@@ -506,11 +508,22 @@ final class Shrinker
     }
 
     /**
+     * A binary search finds the smallest value of a choice that keeps the
+     * counterexample failing when every larger value keeps it failing, too.
+     * When a binary search ended at the choice before, the value below the
+     * choice has been tried and does not keep the counterexample failing. A
+     * smaller value that does shows that the property depends on the choice
+     * in another way, on the remainder of a division, for instance, for which
+     * each further binary search only happens to find a smaller value. The
+     * choice is lowered in steps then, rather than using up the attempts for
+     * one binary search after the other.
+     *
      * @param non-negative-int $index
      */
     private function minimizeChoice(int $index): void
     {
-        $choice = $this->choiceAt($index);
+        $choice                = $this->choiceAt($index);
+        $valueBelowDoesNotFail = $choice > 0 && $this->hasBeenTried($this->withChoice($index, $choice - 1));
 
         for ($value = 0; $value <= self::LARGEST_SMALL_VALUE && $value < $choice; $value++) {
             if ($this->consider($this->withChoice($index, $value))) {
@@ -537,6 +550,14 @@ final class Shrinker
 
             if ($index >= $this->length()) {
                 return;
+            }
+
+            if ($valueBelowDoesNotFail) {
+                if ($this->lowerChoiceInSteps($index)) {
+                    return;
+                }
+
+                $valueBelowDoesNotFail = false;
             }
 
             $upper = $this->choiceAt($index);
@@ -1237,7 +1258,7 @@ final class Shrinker
      */
     private function consider(array $choices): bool
     {
-        $key = hash('xxh128', implode(',', $choices));
+        $key = self::keyOf($choices);
 
         if (isset($this->tried[$key])) {
             return false;
@@ -1270,6 +1291,14 @@ final class Shrinker
         $this->numberOfSteps++;
 
         return true;
+    }
+
+    /**
+     * @param list<non-negative-int> $choices
+     */
+    private function hasBeenTried(array $choices): bool
+    {
+        return isset($this->tried[self::keyOf($choices)]);
     }
 
     /**
@@ -1528,6 +1557,16 @@ final class Shrinker
         array_splice($choices, $index, 1, [$value]);
 
         return $choices;
+    }
+
+    /**
+     * @param list<non-negative-int> $choices
+     *
+     * @return non-empty-string
+     */
+    private static function keyOf(array $choices): string
+    {
+        return hash('xxh128', implode(',', $choices));
     }
 
     /**

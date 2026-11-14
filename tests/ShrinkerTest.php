@@ -761,6 +761,74 @@ final class ShrinkerTest extends TestCase
         $this->assertFalse($result->budgetExhausted());
     }
 
+    public function testLowersAChoiceInStepsAsSoonAsABinarySearchLowersItBelowAValueThatDoesNotKeepTheCounterexampleFailing(): void
+    {
+        $candidates = [];
+
+        // the choice has to be a multiple of 5
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                $choices = $candidate->choices();
+
+                if (count($choices) !== 1 || $choices[0] === 0 || $choices[0] % 5 !== 0) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([1000]));
+
+        // the first binary search ends at 625, as 624 does not keep the
+        // counterexample failing, and the second one lowers the choice to 605
+        $this->assertContains([624], $candidates);
+
+        $index = array_search([605], $candidates, true);
+
+        $this->assertIsInt($index);
+        $this->assertSame([[605], [604], [603], [602], [601], [600], [5]], array_slice($candidates, $index, 7));
+        $this->assertSame([5], $result->sequence()->choices());
+    }
+
+    public function testContinuesTheBinarySearchWhenAChoiceThatItLoweredBelowAValueThatDoesNotKeepTheCounterexampleFailingCannotBeLoweredInSteps(): void
+    {
+        $candidates = [];
+
+        // the first binary search ends at 750, the second one lowers the
+        // choice to 563 and then to 469
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                if (!in_array($candidate->choices(), [[750], [563], [469]], true)) {
+                    return null;
+                }
+
+                return $candidate;
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([1000]));
+
+        $loweredTo563 = array_search([563], $candidates, true);
+        $loweredTo469 = array_search([469], $candidates, true);
+
+        $this->assertIsInt($loweredTo563);
+        $this->assertIsInt($loweredTo469);
+
+        // 422 is the value that the binary search tries after 469
+        $this->assertSame([[563], [562]], array_slice($candidates, $loweredTo563, 2));
+        $this->assertSame([[469], [422]], array_slice($candidates, $loweredTo469, 2));
+        $this->assertSame([469], $result->sequence()->choices());
+    }
+
     public function testDoesNotLowerAChoiceByAnotherStepWhenItCouldNotBeLoweredByAFurtherMultipleOfTheStep(): void
     {
         $candidates = [];
