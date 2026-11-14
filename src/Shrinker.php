@@ -44,7 +44,9 @@ use Closure;
  * composed of.
  *
  * Its passes are deleting spans, while the references after a span are
- * changed so that they keep referring to the same values (see SpanKind),
+ * changed so that they keep referring to the same values, and an element
+ * that the minimum size of a collection requires is deleted together with
+ * the choice that added the first other element (see SpanKind),
  * replacing spans with shorter spans they
  * contain that have the same label, moving the values of spans that consist
  * of one choice into the later values of spans with the same label as far
@@ -134,6 +136,37 @@ final class Shrinker
      * @var array<string, true>
      */
     private array $tried = [];
+
+    /**
+     * The choice sequence that the elements of collections were found in.
+     */
+    private ?ChoiceSequence $sequenceOfElements = null;
+
+    /**
+     * The elements of collections that a choice added (see
+     * SpanKind::Element), in the order of their first choices.
+     *
+     * @var list<Span>
+     */
+    private array $elements = [];
+
+    /**
+     * The elements that the minimum size of a collection requires (see
+     * SpanKind::RequiredElement), by their first choice and the choice after
+     * their last one.
+     *
+     * @var array<string, Span>
+     */
+    private array $requiredElements = [];
+
+    /**
+     * The first element that a choice added of each collection that has
+     * one, by the span that the elements of the collection are part of and
+     * their label.
+     *
+     * @var array<string, Span>
+     */
+    private array $firstElements = [];
 
     /**
      * @param Closure(ChoiceSequence): ?ChoiceSequence $test                    replays a candidate and returns the choice
@@ -247,10 +280,88 @@ final class Shrinker
 
             // after a successful deletion, the span at the same index of the
             // simpler sequence is tried next
-            if (!$this->deleteSpanKeepingReferences($spans[$index]) &&
+            if (!$this->deleteRequiredElement($spans[$index]) &&
+                !$this->deleteSpanKeepingReferences($spans[$index]) &&
                 !$this->consider($this->withoutChoices($spans[$index]->start(), $spans[$index]->length())) &&
                 !$this->deleteSpanRaisingLaterChoice($spans[$index])) {
                 $index++;
+            }
+        }
+    }
+
+    /**
+     * No choice decided that there is an element that the minimum size of a
+     * collection requires, so deleting its span leaves the collection with
+     * as many elements as before: the choice that added the first other
+     * element is read as a part of an element. Deleting the span together
+     * with that choice deletes the element, and the first other element
+     * takes the place of the last element that the minimum size requires. A
+     * collection that has no other element cannot have fewer elements.
+     */
+    private function deleteRequiredElement(Span $span): bool
+    {
+        $this->findElements();
+
+        $key = $span->start() . ':' . $span->end();
+
+        if (!isset($this->requiredElements[$key])) {
+            return false;
+        }
+
+        $collection = self::collectionOf($this->requiredElements[$key]);
+
+        if (!isset($this->firstElements[$collection])) {
+            return false;
+        }
+
+        $choices = $this->current->choices();
+
+        // the choice that added the element comes after the span
+        array_splice($choices, $this->firstElements[$collection]->start(), 1);
+        array_splice($choices, $span->start(), $span->length());
+
+        return $this->consider($choices);
+    }
+
+    /**
+     * Finds the elements of the collections of the current sequence, once
+     * for each sequence.
+     */
+    private function findElements(): void
+    {
+        if ($this->sequenceOfElements === $this->current) {
+            return;
+        }
+
+        $this->sequenceOfElements = $this->current;
+        $this->elements           = [];
+        $this->requiredElements   = [];
+        $this->firstElements      = [];
+
+        foreach ($this->current->spans() as $span) {
+            if ($span->kind() === SpanKind::RequiredElement) {
+                $this->requiredElements[$span->start() . ':' . $span->end()] = $span;
+
+                continue;
+            }
+
+            // a span of this kind that starts with the choice 0 ends its
+            // collection
+            if ($span->kind() === SpanKind::Element && $span->length() > 0 && $this->choiceAt($span->start()) === 1) {
+                $this->elements[] = $span;
+            }
+        }
+
+        usort(
+            $this->elements,
+            static fn (Span $a, Span $b): int => $a->start() <=> $b->start(),
+        );
+
+        foreach ($this->elements as $element) {
+            $collection = self::collectionOf($element);
+
+            if (!isset($this->firstElements[$collection])) {
+                $this->firstElements[$collection] = $element;
             }
         }
     }
@@ -1777,6 +1888,21 @@ final class Shrinker
         array_splice($choices, $index, 1, [$value]);
 
         return $choices;
+    }
+
+    /**
+     * The elements of a collection are part of the same span and have the
+     * same label.
+     */
+    private static function collectionOf(Span $span): string
+    {
+        $parent = $span->parent();
+
+        if ($parent === null) {
+            $parent = -1;
+        }
+
+        return $parent . ':' . $span->label();
     }
 
     /**

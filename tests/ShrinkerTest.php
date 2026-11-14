@@ -559,6 +559,64 @@ final class ShrinkerTest extends TestCase
         $this->assertSame(1, $result->numberOfSteps());
     }
 
+    public function testDeletesAnElementThatTheMinimumSizeOfACollectionRequiresTogetherWithTheChoiceThatAddedTheFirstOtherElement(): void
+    {
+        // deleting the span of the first element alone leaves the choice 1
+        // that added the third element where the second element is read
+        $result = $this->shrinkerAccepting(
+            [
+                '6,7,0' => [
+                    new Span(0, 1, 'element', null, SpanKind::RequiredElement),
+                    new Span(1, 2, 'element', null, SpanKind::RequiredElement),
+                    new Span(2, 3, 'element', null, SpanKind::Element),
+                ],
+            ],
+        )->shrink(
+            new ChoiceSequence(
+                [5, 6, 1, 7, 0],
+                [
+                    new Span(0, 1, 'element', null, SpanKind::RequiredElement),
+                    new Span(1, 2, 'element', null, SpanKind::RequiredElement),
+                    new Span(2, 4, 'element', null, SpanKind::Element),
+                    new Span(4, 5, 'element', null, SpanKind::Element),
+                ],
+            ),
+        );
+
+        $this->assertSame([6, 7, 0], $result->sequence()->choices());
+        $this->assertSame(1, $result->numberOfSteps());
+    }
+
+    public function testDeletesTheSpanOfAnElementThatTheMinimumSizeOfACollectionRequiresWhenNoChoiceAddedAnotherElement(): void
+    {
+        // the collections share their label, but the choice that added an
+        // element to the second one does not add an element to the first one
+        $result = $this->shrinkerAccepting(
+            [
+                '6,1,7' => [
+                    new Span(0, 1, 'first', null),
+                    new Span(0, 1, 'element', 0, SpanKind::RequiredElement),
+                    new Span(1, 3, 'second', null),
+                    new Span(1, 3, 'element', 1, SpanKind::Element),
+                ],
+            ],
+        )->shrink(
+            new ChoiceSequence(
+                [5, 6, 1, 7],
+                [
+                    new Span(0, 2, 'first', null),
+                    new Span(0, 1, 'element', 0, SpanKind::RequiredElement),
+                    new Span(1, 2, 'element', 0, SpanKind::RequiredElement),
+                    new Span(2, 4, 'second', null),
+                    new Span(2, 4, 'element', 3, SpanKind::Element),
+                ],
+            ),
+        );
+
+        $this->assertSame([6, 1, 7], $result->sequence()->choices());
+        $this->assertSame(1, $result->numberOfSteps());
+    }
+
     public function testDeletesASpanWhileRaisingTheChoiceThatDeterminesHowManySpansOfAKindThatItContainsALaterGroupOfSpansHas(): void
     {
         // the first of two strings, whose lengths are drawn before their
