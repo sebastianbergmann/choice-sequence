@@ -10,9 +10,12 @@
 namespace SebastianBergmann\ChoiceSequence;
 
 use const PHP_INT_MAX;
+use function array_diff;
 use function array_fill;
+use function array_key_exists;
 use function array_map;
 use function array_reverse;
+use function array_search;
 use function array_slice;
 use function array_splice;
 use function array_sum;
@@ -40,7 +43,9 @@ use Closure;
  * checked, so composed generators shrink as well as the ones they are
  * composed of.
  *
- * Its passes are deleting spans, replacing spans with shorter spans they
+ * Its passes are deleting spans, while the references after a span are
+ * changed so that they keep referring to the same values (see SpanKind),
+ * replacing spans with shorter spans they
  * contain that have the same label, moving the values of spans that consist
  * of one choice into the later values of spans with the same label as far
  * as these can take them, setting blocks of consecutive choices to 0,
@@ -235,11 +240,176 @@ final class Shrinker
 
             // after a successful deletion, the span at the same index of the
             // simpler sequence is tried next
-            if (!$this->consider($this->withoutChoices($spans[$index]->start(), $spans[$index]->length())) &&
+            if (!$this->deleteSpanKeepingReferences($spans[$index]) &&
+                !$this->consider($this->withoutChoices($spans[$index]->start(), $spans[$index]->length())) &&
                 !$this->deleteSpanRaisingLaterChoice($spans[$index])) {
                 $index++;
             }
         }
+    }
+
+    /**
+     * A reference is the position of a value among the values that earlier
+     * spans contributed, counted from the last one, the value that a step of
+     * a state machine takes from a pool, for instance. Deleting a span that
+     * contributed a value, or that consumed one, changes the positions of
+     * the values that were contributed before it, so that the references
+     * after the span refer to other values and the counterexample no longer
+     * fails, although the span is not needed for it to fail. The span is
+     * therefore deleted while the references after it are changed so that
+     * they refer to the values that they referred to before. This is tried
+     * before the span is deleted without changing a reference, as it deletes
+     * what the span contributed and nothing else.
+     */
+    private function deleteSpanKeepingReferences(Span $span): bool
+    {
+        $choices = $this->withReferencesKeptWithout($span);
+
+        if ($choices === null) {
+            return false;
+        }
+
+        array_splice($choices, $span->start(), $span->length());
+
+        return $this->consider($choices);
+    }
+
+    /**
+     * The choices of the current sequence, with the references after the
+     * span that refer to another value when the span is deleted changed so
+     * that they refer to the value that they refer to now, and null when no
+     * reference is changed. A reference to a value that the span contributed
+     * is not changed.
+     *
+     * @return ?list<non-negative-int>
+     */
+    private function withReferencesKeptWithout(Span $span): ?array
+    {
+        $choices = $this->current->choices();
+        $changed = false;
+
+        // the values that can be referred to, by label, in the order in
+        // which they were contributed: as they are now, and as they are when
+        // the span is deleted
+        $now     = [];
+        $without = [];
+
+        foreach ($this->referablesAndReferences() as $key => $other) {
+            $label   = $other->label();
+            $deleted = $other->start() >= $span->start() && $other->end() <= $span->end();
+
+            if ($other->kind() === SpanKind::Referable) {
+                $now[$label][] = $key;
+
+                if (!$deleted) {
+                    $without[$label][] = $key;
+                }
+
+                continue;
+            }
+
+            $choice = $this->choiceAt($other->start());
+            $index  = false;
+
+            if (isset($now[$label]) && $now[$label] !== []) {
+                $value = $this->valueAt($now[$label], $choice);
+
+                if ($other->kind() === SpanKind::ConsumingReference) {
+                    $now[$label] = array_values(array_diff($now[$label], [$value]));
+                }
+
+                if (isset($without[$label])) {
+                    $index = array_search($value, $without[$label], true);
+                }
+            }
+
+            // a reference without a value to refer to is not drawn again
+            if ($deleted || !isset($without[$label]) || $without[$label] === []) {
+                continue;
+            }
+
+            $numberOfValues = count($without[$label]);
+
+            if ($index === false) {
+                // the span contributed the value that the reference refers
+                // to: the reference is replayed as it is
+                $position = min($choice, $numberOfValues - 1);
+                $index    = $numberOfValues - 1 - $position;
+            } else {
+                $position = $numberOfValues - 1 - $index;
+
+                assert($position >= 0);
+
+                if ($position !== $choice) {
+                    array_splice($choices, $other->start(), 1, [$position]);
+
+                    $changed = true;
+                }
+            }
+
+            if ($other->kind() === SpanKind::ConsumingReference) {
+                array_splice($without[$label], $index, 1);
+            }
+        }
+
+        if (!$changed) {
+            return null;
+        }
+
+        return $choices;
+    }
+
+    /**
+     * The value that a reference with the given choice refers to: a choice
+     * that is greater than the last position refers to the value that was
+     * contributed first.
+     *
+     * @param non-empty-list<non-negative-int> $values
+     * @param non-negative-int                 $choice
+     *
+     * @return non-negative-int
+     */
+    private function valueAt(array $values, int $choice): int
+    {
+        $index = max(0, count($values) - 1 - $choice);
+
+        assert(array_key_exists($index, $values));
+
+        return $values[$index];
+    }
+
+    /**
+     * The spans of the current sequence that contribute a value that can be
+     * referred to, and the references, in the order in which they take
+     * effect: a value can be referred to after the last choice of its span.
+     *
+     * @return list<Span>
+     */
+    private function referablesAndReferences(): array
+    {
+        $spans = [];
+
+        foreach ($this->current->spans() as $span) {
+            if ($span->kind() === SpanKind::Referable) {
+                $spans[] = $span;
+            } elseif (($span->kind() === SpanKind::Reference || $span->kind() === SpanKind::ConsumingReference) && $span->length() === 1) {
+                $spans[] = $span;
+            }
+        }
+
+        usort(
+            $spans,
+            static function (Span $a, Span $b): int
+            {
+                if ($a->end() !== $b->end()) {
+                    return $a->end() <=> $b->end();
+                }
+
+                return $b->start() <=> $a->start();
+            },
+        );
+
+        return $spans;
     }
 
     /**

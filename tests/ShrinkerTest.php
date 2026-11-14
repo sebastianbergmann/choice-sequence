@@ -15,12 +15,15 @@ use function array_filter;
 use function array_key_exists;
 use function array_search;
 use function array_slice;
+use function array_splice;
 use function array_unique;
 use function array_values;
+use function assert;
 use function count;
 use function implode;
 use function in_array;
 use function min;
+use function preg_match;
 use ArrayObject;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -1136,6 +1139,107 @@ final class ShrinkerTest extends TestCase
         $this->assertSame([50, 50], $shrinker->shrink(new ChoiceSequence([100, 100], $spans))->sequence()->choices());
     }
 
+    public function testDeletesASpanWhileChangingTheReferencesAfterItSoThatTheyReferToTheSameValues(): void
+    {
+        $candidates = [];
+
+        // a value that is 3 has to be added, and a value that is 7 has to be
+        // referred to
+        $shrinker = $this->shrinkerOfStepsThatReferToValues('/add 3.*use 7/', $candidates);
+
+        // the values 3, 7, and 5 are added, and the last step refers to the
+        // second one: without the value that was added last, it is the first
+        // one counted from the last one
+        $result = $shrinker->shrink(self::stepsThatReferToValues([1, 0, 3, 0, 1, 0, 7, 0, 1, 0, 5, 0, 1, 1, 1])[0]);
+
+        $this->assertSame([1, 0, 3, 0, 1, 0, 7, 0, 1, 1, 0], $result->sequence()->choices());
+
+        // the span is not deleted without changing the reference
+        $this->assertNotContains([1, 0, 3, 0, 1, 0, 7, 0, 1, 1, 1], $candidates);
+    }
+
+    public function testDeletesASpanThatConsumesAValueWhileChangingTheReferencesAfterItSoThatTheyReferToTheSameValues(): void
+    {
+        $candidates = [];
+
+        $shrinker = $this->shrinkerOfStepsThatReferToValues('/use 7/', $candidates);
+
+        // the values 7 and 5 are added, the second one is consumed, and the
+        // last step refers to the first one: when the second one is not
+        // consumed, the first one is the second one counted from the last one
+        $result = $shrinker->shrink(self::stepsThatReferToValues([1, 0, 7, 0, 1, 0, 5, 0, 1, 2, 0, 1, 1, 0])[0]);
+
+        $this->assertContains([1, 0, 7, 0, 1, 0, 5, 0, 1, 1, 1], $candidates);
+        $this->assertSame([1, 0, 7, 0, 1, 1, 0], $result->sequence()->choices());
+    }
+
+    public function testAReferenceCannotReferToTheValueOfASpanThatItIsPartOf(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        // the reference is the last choice of the span of the third value,
+        // so it refers to the first value: without the second value, that is
+        // the first one counted from the last one
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [5, 6, 7, 2],
+                [
+                    new Span(0, 1, 'value', null, SpanKind::Referable),
+                    new Span(1, 2, 'value', null, SpanKind::Referable),
+                    new Span(2, 4, 'value', null, SpanKind::Referable),
+                    new Span(3, 4, 'value', 2, SpanKind::Reference),
+                ],
+            ),
+        );
+
+        $this->assertContains([5, 7, 0], $candidates);
+        $this->assertNotContains([5, 7, 1], $candidates);
+    }
+
+    public function testOnlyChangesAReferenceThatConsistsOfOneChoiceAndThatHasAValueToReferTo(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        // the first reference is drawn before a value that it can refer to,
+        // and the last one has two choices
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [4, 5, 6, 1, 9],
+                [
+                    new Span(0, 1, 'value', null, SpanKind::Reference),
+                    new Span(1, 2, 'value', null, SpanKind::Referable),
+                    new Span(2, 3, 'value', null, SpanKind::Referable),
+                    new Span(3, 5, 'value', null, SpanKind::Reference),
+                ],
+            ),
+        );
+
+        // a reference at the fourth choice would be changed from 1 to 0 when
+        // the span of the third choice is deleted
+        $this->assertContains([4, 5, 1, 9], $candidates);
+        $this->assertNotContains([4, 5, 0, 9], $candidates);
+    }
+
     public function testStopsWhenTheMaximumNumberOfAttemptsHasBeenMade(): void
     {
         $shrinker = new Shrinker(
@@ -1155,6 +1259,109 @@ final class ShrinkerTest extends TestCase
         $this->assertSame(0, $result->numberOfSteps());
         $this->assertTrue($result->budgetExhausted());
         $this->assertFalse($result->interrupted());
+    }
+
+    /**
+     * @param non-empty-string             $pattern    the regular expression that the steps that falsify the property match, see stepsThatReferToValues()
+     * @param list<list<non-negative-int>> $candidates the choices of the candidates that were replayed
+     */
+    private function shrinkerOfStepsThatReferToValues(string $pattern, array &$candidates): Shrinker
+    {
+        return new Shrinker(
+            static function (ChoiceSequence $candidate) use ($pattern, &$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                [$consumed, $steps] = self::stepsThatReferToValues($candidate->choices());
+
+                if (preg_match($pattern, $steps) !== 1) {
+                    return null;
+                }
+
+                return $consumed;
+            },
+            1000,
+        );
+    }
+
+    /**
+     * Replays the choices as steps that add values to a pool and that take
+     * values from it, like the steps of a state machine. A step starts with
+     * the choice 1 and the choice of what it does. A step that adds a value
+     * (0) draws the value, of up to 9, and a choice that is always 0 for the
+     * span of the kind Referable. A step that refers to a value (1) or that
+     * consumes one (2) draws its position, counted from the value that was
+     * added last, in a span of the kind Reference or ConsumingReference. It
+     * is skipped, after its choices were drawn, when the pool has no value.
+     *
+     * @param list<non-negative-int> $candidate
+     *
+     * @return array{ChoiceSequence, string} the choices that were consumed, with their spans, and the steps that were taken, "add 3,use 3", for instance
+     */
+    private static function stepsThatReferToValues(array $candidate): array
+    {
+        $choices = [];
+        $spans   = [];
+        $maxima  = [];
+        $pool    = [];
+        $steps   = [];
+
+        while (self::choiceAt($candidate, count($choices), 1) === 1) {
+            $start  = count($choices);
+            $action = self::choiceAt($candidate, $start + 1, 2);
+            $step   = count($spans);
+
+            $choices[] = 1;
+            $choices[] = $action;
+            $maxima[]  = 1;
+            $maxima[]  = 2;
+
+            if ($action === 0) {
+                $value = self::choiceAt($candidate, $start + 2, 9);
+
+                $choices[] = $value;
+                $choices[] = 0;
+                $maxima[]  = 9;
+                $maxima[]  = 0;
+                $spans[]   = new Span($start, $start + 4, 'step', null);
+                $spans[]   = new Span($start + 3, $start + 4, 'value', $step, SpanKind::Referable);
+                $pool[]    = $value;
+                $steps[]   = 'add ' . $value;
+
+                continue;
+            }
+
+            $spans[] = new Span($start, $start + 3, 'step', null);
+
+            if ($pool === []) {
+                $choices[] = 0;
+                $maxima[]  = 0;
+
+                continue;
+            }
+
+            $position = self::choiceAt($candidate, $start + 2, count($pool) - 1);
+            $index    = count($pool) - 1 - $position;
+
+            assert(array_key_exists($index, $pool));
+
+            $choices[] = $position;
+            $maxima[]  = count($pool) - 1;
+
+            if ($action === 1) {
+                $spans[] = new Span($start + 2, $start + 3, 'value', $step, SpanKind::Reference);
+                $steps[] = 'use ' . $pool[$index];
+
+                continue;
+            }
+
+            $spans[] = new Span($start + 2, $start + 3, 'value', $step, SpanKind::ConsumingReference);
+            $steps[] = 'consume ' . $pool[$index];
+
+            array_splice($pool, $index, 1);
+        }
+
+        return [new ChoiceSequence($choices, $spans, $maxima), implode(',', $steps)];
     }
 
     /**

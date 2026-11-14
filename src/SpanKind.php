@@ -62,4 +62,35 @@ enum SpanKind
      * first.
      */
     case Element;
+
+    /**
+     * A value that later choices can refer to, the value that a step of a
+     * state machine added to a pool of values, for instance. Spans of the
+     * kinds Reference and ConsumingReference that have the same label as
+     * this span and start after its last choice can refer to the value.
+     */
+    case Referable;
+
+    /**
+     * A reference to one of the values that spans of the kind Referable with
+     * the same label as this span contributed before it: the single choice
+     * of the span is the position of the value among those that have not
+     * been consumed, counted from the one that was contributed last. A
+     * choice that is greater than the last position refers to the value
+     * that was contributed first.
+     *
+     * When choices before a reference are deleted, a value that it refers
+     * to has another position when a value that was contributed after it
+     * is deleted, or when a reference that consumed such a value is. The
+     * shrinker changes the choice of the reference then, so that it keeps
+     * referring to the same value.
+     */
+    case Reference;
+
+    /**
+     * A reference, as described for the kind Reference, that consumes the
+     * value that it refers to: references that are drawn after it cannot
+     * refer to the value.
+     */
+    case ConsumingReference;
 }
