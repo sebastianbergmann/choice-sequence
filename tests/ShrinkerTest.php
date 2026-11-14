@@ -1173,6 +1173,23 @@ final class ShrinkerTest extends TestCase
         $this->assertSame([1, 0, 7, 0, 1, 1, 0], $result->sequence()->choices());
     }
 
+    public function testDeletesASpanWhileLettingTheFirstReferenceToTheValueThatItContributedReferToAnotherValue(): void
+    {
+        $candidates = [];
+
+        // a value that is 7 has to be added before a value that is 8, then a
+        // value that is 7 has to be consumed, and then a value that is 8 has
+        // to be referred to
+        $shrinker = $this->shrinkerOfStepsThatReferToValues('/add 7.*add 8.*consume 7.*use 8/', $candidates);
+
+        // the values 7, 8, and 7 are added, the third one is consumed, and
+        // the last step refers to the second one: without the third one, the
+        // first one can be consumed instead
+        $result = $shrinker->shrink(self::stepsThatReferToValues([1, 0, 7, 0, 1, 0, 8, 0, 1, 0, 7, 0, 1, 2, 0, 1, 1, 0])[0]);
+
+        $this->assertSame([1, 0, 7, 0, 1, 0, 8, 0, 1, 2, 1, 1, 1, 0], $result->sequence()->choices());
+    }
+
     public function testAReferenceCannotReferToTheValueOfASpanThatItIsPartOf(): void
     {
         $candidates = [];

@@ -86,6 +86,13 @@ final class Shrinker
     private const int LARGEST_RAISING_DISTANCE        = 3;
 
     /**
+     * How many of the values that are left when a span is deleted, the ones
+     * that were contributed last first, the first reference to a value that
+     * the span contributed is tried with.
+     */
+    private const int LARGEST_NUMBER_OF_VALUES_FOR_A_REFERENCE = 8;
+
+    /**
      * How many of the groups of spans that are part of the same span, have the
      * same label, and follow a choice, the nearest first, are considered for
      * deleting spans while the choice is lowered.
@@ -260,15 +267,40 @@ final class Shrinker
      * they refer to the values that they referred to before. This is tried
      * before the span is deleted without changing a reference, as it deletes
      * what the span contributed and nothing else.
+     *
+     * A reference to a value that the span contributed cannot refer to it
+     * when the span is deleted. Another value can keep the counterexample
+     * failing as well, one that is equal to it, for instance, as values
+     * often are once they have been simplified. The first such reference is
+     * therefore also tried with each of the values that are left, the one
+     * that was contributed last first.
      */
     private function deleteSpanKeepingReferences(Span $span): bool
     {
-        $choices = $this->withReferencesKeptWithout($span);
+        [$choices, $numberOfValuesForReferenceToDeletedValue] = $this->withReferencesKeptWithout($span, null);
 
-        if ($choices === null) {
-            return false;
+        if ($choices !== null && $this->considerWithout($choices, $span)) {
+            return true;
         }
 
+        $numberOfValues = min($numberOfValuesForReferenceToDeletedValue, self::LARGEST_NUMBER_OF_VALUES_FOR_A_REFERENCE);
+
+        for ($position = 0; $position < $numberOfValues; $position++) {
+            [$choices] = $this->withReferencesKeptWithout($span, $position);
+
+            if ($choices !== null && $this->considerWithout($choices, $span)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param list<non-negative-int> $choices
+     */
+    private function considerWithout(array $choices, Span $span): bool
+    {
         array_splice($choices, $span->start(), $span->length());
 
         return $this->consider($choices);
@@ -278,15 +310,20 @@ final class Shrinker
      * The choices of the current sequence, with the references after the
      * span that refer to another value when the span is deleted changed so
      * that they refer to the value that they refer to now, and null when no
-     * reference is changed. A reference to a value that the span contributed
-     * is not changed.
+     * reference is changed.
      *
-     * @return ?list<non-negative-int>
+     * A reference to a value that the span contributed is not changed,
+     * except for the first one when a position is given for it.
+     *
+     * @param ?non-negative-int $positionOfFirstReferenceToDeletedValue
+     *
+     * @return array{0: ?list<non-negative-int>, 1: non-negative-int} the choices, and the number of values that the first reference to a value that the span contributed can refer to when the span is deleted, 0 when there is no such reference
      */
-    private function withReferencesKeptWithout(Span $span): ?array
+    private function withReferencesKeptWithout(Span $span, ?int $positionOfFirstReferenceToDeletedValue): array
     {
-        $choices = $this->current->choices();
-        $changed = false;
+        $choices                                  = $this->current->choices();
+        $changed                                  = false;
+        $numberOfValuesForReferenceToDeletedValue = 0;
 
         // the values that can be referred to, by label, in the order in
         // which they were contributed: as they are now, and as they are when
@@ -329,22 +366,35 @@ final class Shrinker
             }
 
             $numberOfValues = count($without[$label]);
+            $write          = false;
 
             if ($index === false) {
                 // the span contributed the value that the reference refers
-                // to: the reference is replayed as it is
+                // to: the reference is replayed as it is, unless it is the
+                // first one and a position is given for it
                 $position = min($choice, $numberOfValues - 1);
-                $index    = $numberOfValues - 1 - $position;
+
+                if ($numberOfValuesForReferenceToDeletedValue === 0) {
+                    $numberOfValuesForReferenceToDeletedValue = $numberOfValues;
+
+                    if ($positionOfFirstReferenceToDeletedValue !== null) {
+                        $position = min($positionOfFirstReferenceToDeletedValue, $numberOfValues - 1);
+                        $write    = true;
+                    }
+                }
+
+                $index = $numberOfValues - 1 - $position;
             } else {
                 $position = $numberOfValues - 1 - $index;
+                $write    = $position !== $choice;
+            }
 
-                assert($position >= 0);
+            assert($position >= 0);
 
-                if ($position !== $choice) {
-                    array_splice($choices, $other->start(), 1, [$position]);
+            if ($write) {
+                array_splice($choices, $other->start(), 1, [$position]);
 
-                    $changed = true;
-                }
+                $changed = true;
             }
 
             if ($other->kind() === SpanKind::ConsumingReference) {
@@ -353,10 +403,10 @@ final class Shrinker
         }
 
         if (!$changed) {
-            return null;
+            return [null, $numberOfValuesForReferenceToDeletedValue];
         }
 
-        return $choices;
+        return [$choices, $numberOfValuesForReferenceToDeletedValue];
     }
 
     /**
