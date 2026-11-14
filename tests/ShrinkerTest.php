@@ -646,6 +646,106 @@ final class ShrinkerTest extends TestCase
         $this->assertSame([[[1], [1, 1, 1]], [[], [1, 1, 1]], [[], [1]], [[], [1, 1]]], array_slice($candidates, 0, 4));
     }
 
+    public function testDoesNotDeleteAPartOfAnElementThatAChoiceAddedToACollectionTogetherWithChoicesThatAreNotPartOfIt(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        // two elements that consist of the choice that added them and two
+        // more choices, the first element with a span for these
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [1, 5, 6, 1, 7, 8, 0],
+                [
+                    new Span(0, 3, 'element', null, SpanKind::Element),
+                    new Span(1, 3, 'value', 0),
+                    new Span(3, 6, 'element', null, SpanKind::Element),
+                    new Span(6, 7, 'element', null, SpanKind::Element),
+                ],
+            ),
+        );
+
+        // whole elements, and some of the choices of an element
+        $this->assertContains([1, 7, 8, 0], $candidates);
+        $this->assertContains([1, 5, 6], $candidates);
+        $this->assertContains([1, 6, 1, 7, 8, 0], $candidates);
+        $this->assertContains([1, 5, 1, 7, 8, 0], $candidates);
+        $this->assertContains([1, 5, 6, 1, 8, 0], $candidates);
+        $this->assertContains([1, 5, 6, 1, 7, 0], $candidates);
+        $this->assertContains([1, 5, 6, 1, 7, 8], $candidates);
+
+        // the choice that added an element without the element
+        $this->assertNotContains([5, 6, 1, 7, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 6, 7, 8, 0], $candidates);
+
+        // an element without the choice that added it
+        $this->assertNotContains([1, 1, 7, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 6, 1, 0], $candidates);
+
+        // a part of an element with choices that are not part of it
+        $this->assertNotContains([6, 1, 7, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 7, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 6, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 6, 1, 7], $candidates);
+        $this->assertNotContains([7, 8, 0], $candidates);
+        $this->assertNotContains([1, 8, 0], $candidates);
+        $this->assertNotContains([1, 5, 0], $candidates);
+    }
+
+    public function testDeletesAPartOfAnElementOfACollectionThatIsAnElementOfAnotherCollection(): void
+    {
+        $candidates = [];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use (&$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                return null;
+            },
+            1000,
+        );
+
+        // a collection of one collection that has two elements
+        $shrinker->shrink(
+            new ChoiceSequence(
+                [1, 1, 5, 1, 6, 0, 0],
+                [
+                    new Span(0, 6, 'outer', null, SpanKind::Element),
+                    new Span(1, 3, 'inner', 0, SpanKind::Element),
+                    new Span(3, 5, 'inner', 0, SpanKind::Element),
+                    new Span(5, 6, 'inner', 0, SpanKind::Element),
+                    new Span(6, 7, 'outer', null, SpanKind::Element),
+                ],
+            ),
+        );
+
+        // the elements of the inner collection, and both of them
+        $this->assertContains([1, 1, 6, 0, 0], $candidates);
+        $this->assertContains([1, 1, 5, 0, 0], $candidates);
+        $this->assertContains([1, 0, 0], $candidates);
+
+        // a part of an element of the inner collection with the choice
+        // that added the element of the outer collection, or with a part of
+        // the other element of the inner collection
+        $this->assertNotContains([5, 1, 6, 0, 0], $candidates);
+        $this->assertNotContains([1, 1, 6, 0, 0, 0], $candidates);
+        $this->assertNotContains([1, 1, 5, 6, 0, 0], $candidates);
+
+        // every choice of the element of the outer collection but the one
+        // that added it is more than a block of choices holds
+        $this->assertNotContains([1, 0], $candidates);
+    }
+
     public function testDoesNotLowerAChoiceThatAddedAnElementToACollection(): void
     {
         $candidates = [];

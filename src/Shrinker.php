@@ -12,7 +12,9 @@ namespace SebastianBergmann\ChoiceSequence;
 use const PHP_INT_MAX;
 use function array_diff;
 use function array_key_exists;
+use function array_last;
 use function array_map;
+use function array_pop;
 use function array_reverse;
 use function array_search;
 use function array_slice;
@@ -66,6 +68,11 @@ use Closure;
  * with the passes that made the counterexample simpler most often in the
  * round before, so that the attempts are spent on the passes that are most
  * likely to succeed.
+ *
+ * The passes that delete choices do not delete a part of an element that a
+ * choice added to a collection together with choices that are not part of
+ * the element, nor every choice of the element but the one that added it:
+ * the choices that are left are not read as the elements that are left.
  *
  * The passes that lower choices do not change the choice that added an
  * element to a collection: lowering it ends the collection, which deletes
@@ -163,6 +170,24 @@ final class Shrinker
      * @var list<Span>
      */
     private array $elements = [];
+
+    /**
+     * The innermost element that a choice added and that an element that a
+     * choice added is a part of, an element of a collection that is an
+     * element of another collection, for instance, by the first choice of
+     * the element that is a part of it.
+     *
+     * @var array<non-negative-int, Span>
+     */
+    private array $elementsAroundElements = [];
+
+    /**
+     * The innermost element that a choice added and that a choice is a part
+     * of, by the choice.
+     *
+     * @var array<non-negative-int, Span>
+     */
+    private array $elementsOfChoices = [];
 
     /**
      * The choices that added an element to a collection: the first choices
@@ -403,7 +428,8 @@ final class Shrinker
 
     /**
      * Deleting the span of an element of a collection deletes the element.
-     * Longer spans are tried first.
+     * Longer spans are tried first. A span that holds every choice of an
+     * element but the one that added it is not deleted.
      */
     private function deleteSpans(): void
     {
@@ -414,6 +440,13 @@ final class Shrinker
 
             if ($index >= count($spans)) {
                 return;
+            }
+
+            // a span without choices is not a part of an element
+            if ($spans[$index]->length() > 0 && $this->cutsElement($spans[$index]->start(), $spans[$index]->end())) {
+                $index++;
+
+                continue;
             }
 
             // after a successful deletion, the span at the same index of the
@@ -473,6 +506,8 @@ final class Shrinker
 
         $this->sequenceOfElements       = $this->current;
         $this->elements                 = [];
+        $this->elementsAroundElements   = [];
+        $this->elementsOfChoices        = [];
         $this->choicesThatAddedElements = [];
         $this->requiredElements         = [];
         $this->collections              = [];
@@ -508,7 +543,25 @@ final class Shrinker
             static fn (Span $a, Span $b): int => $a->start() <=> $b->start(),
         );
 
+        $around = [];
+
         foreach ($this->elements as $element) {
+            // the elements that started before this one and that it is not
+            // a part of have ended
+            while ($around !== [] && array_last($around)->end() <= $element->start()) {
+                array_pop($around);
+            }
+
+            if ($around !== []) {
+                $this->elementsAroundElements[$element->start()] = array_last($around);
+            }
+
+            $around[] = $element;
+
+            for ($choice = $element->start(); $choice < $element->end(); $choice++) {
+                $this->elementsOfChoices[$choice] = $element;
+            }
+
             $this->choicesThatAddedElements[$element->start()] = true;
 
             $collection = self::collectionOf($element);
@@ -958,6 +1011,12 @@ final class Shrinker
             $start = $this->length() - $size;
 
             while ($start >= 0 && !$this->isStopped()) {
+                if ($this->cutsElement($start, $start + $size)) {
+                    $start--;
+
+                    continue;
+                }
+
                 if ($this->consider($this->withoutChoices($start, $size))) {
                     $start = min($start, $this->length() - $size);
 
@@ -2080,6 +2139,86 @@ final class Shrinker
         array_splice($choices, $index, 1, [$value]);
 
         return $choices;
+    }
+
+    /**
+     * Whether deleting the choices from $start up to, but not including,
+     * $end cuts an element that a choice added to a collection: what is
+     * left of the element, or of the choices after it, is not read as an
+     * element then.
+     *
+     * The choices that are deleted may be whole elements, with the choices
+     * that added them, or some of the choices of one element after the
+     * choice that added it. They cut an element when they are a part of it
+     * together with choices that are not, and when they are every choice of
+     * the element but the one that added it.
+     *
+     * @param non-negative-int $start
+     * @param positive-int     $end   larger than $start
+     */
+    private function cutsElement(int $start, int $end): bool
+    {
+        $this->findElements();
+
+        // the elements that the last choice is a part of and that start
+        // with one of the choices
+        $element = $this->elementOf($end - 1);
+
+        while ($element !== null && $element->start() >= $start) {
+            if ($element->end() > $end) {
+                return true;
+            }
+
+            $element = $this->elementAround($element);
+        }
+
+        // the innermost element that all of the choices are a part of,
+        // after the choice that added it
+        $elementOfChoices = $element;
+
+        if ($elementOfChoices !== null && $elementOfChoices->start() + 1 === $start && $elementOfChoices->end() === $end) {
+            return true;
+        }
+
+        // the elements that the first choice is a part of and that do not
+        // start with it
+        $element = $this->elementOf($start);
+
+        while ($element !== null && $element !== $elementOfChoices) {
+            if ($element->start() < $start) {
+                return true;
+            }
+
+            $element = $this->elementAround($element);
+        }
+
+        return false;
+    }
+
+    /**
+     * The innermost element that a choice added and that the choice is a
+     * part of.
+     */
+    private function elementOf(int $index): ?Span
+    {
+        if (!isset($this->elementsOfChoices[$index])) {
+            return null;
+        }
+
+        return $this->elementsOfChoices[$index];
+    }
+
+    /**
+     * The innermost element that a choice added and that the element is a
+     * part of.
+     */
+    private function elementAround(Span $element): ?Span
+    {
+        if (!isset($this->elementsAroundElements[$element->start()])) {
+            return null;
+        }
+
+        return $this->elementsAroundElements[$element->start()];
     }
 
     /**
