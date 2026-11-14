@@ -1573,6 +1573,11 @@ final class Shrinker
         $groups = [];
 
         foreach ($this->current->spans() as $span) {
+            // the span that ends a collection stays after its elements
+            if ($this->endsCollection($span)) {
+                continue;
+            }
+
             $groups[$span->parent() . ':' . $span->label()][] = $span;
         }
 
@@ -2032,6 +2037,15 @@ final class Shrinker
         array_splice($choices, $index, 1, [$value]);
 
         return $choices;
+    }
+
+    /**
+     * Whether the span consists of the choice that ends a collection (see
+     * SpanKind::Element).
+     */
+    private function endsCollection(Span $span): bool
+    {
+        return $span->kind() === SpanKind::Element && $span->length() > 0 && $this->choiceAt($span->start()) === 0;
     }
 
     /**

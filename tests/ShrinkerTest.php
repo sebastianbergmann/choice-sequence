@@ -376,6 +376,36 @@ final class ShrinkerTest extends TestCase
         $this->assertSame([1, 2, 5, 6], $result->sequence()->choices());
     }
 
+    public function testDoesNotSortTheSpanThatEndsACollectionWithTheElementsOfTheCollection(): void
+    {
+        $candidates = [];
+
+        $spans = [
+            new Span(0, 2, 'element', null, SpanKind::Element),
+            new Span(2, 4, 'element', null, SpanKind::Element),
+            new Span(4, 5, 'element', null, SpanKind::Element),
+        ];
+
+        $shrinker = new Shrinker(
+            static function (ChoiceSequence $candidate) use ($spans, &$candidates): ?ChoiceSequence
+            {
+                $candidates[] = $candidate->choices();
+
+                if ($candidate->choices() !== [1, 5, 1, 6, 0]) {
+                    return null;
+                }
+
+                return new ChoiceSequence($candidate->choices(), $spans);
+            },
+            1000,
+        );
+
+        $result = $shrinker->shrink(new ChoiceSequence([1, 6, 1, 5, 0], $spans));
+
+        $this->assertSame([1, 5, 1, 6, 0], $result->sequence()->choices());
+        $this->assertNotContains([0, 1, 5, 1, 6], $candidates);
+    }
+
     public function testDoesNotSortSpansThatHaveDifferentLabels(): void
     {
         $elements = [new Span(0, 2, 'element', null), new Span(2, 4, 'other element', null)];
