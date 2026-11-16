@@ -174,7 +174,7 @@ print $result->numberOfSteps() . ' steps, ' . $result->numberOfAttempts() . ' at
 
 ```
 10
-3 steps, 22 attempts
+5 steps, 30 attempts
 ```
 
 ### Telling failures apart
