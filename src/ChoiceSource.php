@@ -285,11 +285,19 @@ final class ChoiceSource
         ];
     }
 
+    /**
+     * Marks the end of the span that was started last and has not been ended
+     * yet.
+     *
+     * @throws NoSpanToEndException
+     */
     public function endSpan(): void
     {
         $index = array_pop($this->openSpans);
 
-        assert($index !== null);
+        if ($index === null) {
+            throw new NoSpanToEndException;
+        }
 
         $this->spans[$index]['end'] = count($this->choices);
     }

@@ -26,6 +26,7 @@ use Random\Randomizer;
 #[UsesClass(ChoiceTree::class)]
 #[UsesClass(ChoiceTreeNode::class)]
 #[UsesClass(ExactDistribution::class)]
+#[UsesClass(NoSpanToEndException::class)]
 #[UsesClass(Span::class)]
 #[UsesClass(TooManyChoicesException::class)]
 #[UsesClass(UniformDistribution::class)]
@@ -244,6 +245,19 @@ final class ChoiceSourceTest extends TestCase
                 $source->sequence()->spans(),
             ),
         );
+    }
+
+    public function testCannotEndASpanWhenNoSpanThatWasStartedHasNotBeenEnded(): void
+    {
+        $source = ChoiceSource::replay(new ChoiceSequence([1]));
+
+        $source->startSpan('label');
+        $source->draw(1, new UniformDistribution);
+        $source->endSpan();
+
+        $this->expectException(NoSpanToEndException::class);
+
+        $source->endSpan();
     }
 
     public function testChoosesTheElementAtTheDrawnIndex(): void
