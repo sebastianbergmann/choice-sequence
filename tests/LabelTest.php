@@ -20,8 +20,8 @@ final class LabelTest extends TestCase
 {
     public function testIsTheHashOfTheNameAndItsComponents(): void
     {
-        $this->assertSame(hash('xxh3', 'bytes(0,4096)'), Label::of('bytes', '0', '4096'));
-        $this->assertSame(hash('xxh3', 'booleans()'), Label::of('booleans'));
+        $this->assertSame(hash('xxh3', '5:bytes1:04:4096'), Label::of('bytes', '0', '4096'));
+        $this->assertSame(hash('xxh3', '8:booleans'), Label::of('booleans'));
     }
 
     public function testIsTheSameForTheSameNameAndComponents(): void
@@ -33,5 +33,13 @@ final class LabelTest extends TestCase
     {
         $this->assertNotSame(Label::of('integers', '0', '10'), Label::of('integers', '0', '11'));
         $this->assertNotSame(Label::of('integers', '0', '10'), Label::of('floats', '0', '10'));
+    }
+
+    public function testDiffersForTheSameCharactersThatAreDividedIntoANameAndComponentsDifferently(): void
+    {
+        $this->assertNotSame(Label::of('elements', 'a,b'), Label::of('elements', 'a', 'b'));
+        $this->assertNotSame(Label::of('elements', 'a', ''), Label::of('elements', 'a'));
+        $this->assertNotSame(Label::of('elements(a', 'b'), Label::of('elements', 'a(b'));
+        $this->assertNotSame(Label::of('elements', '1:a'), Label::of('elements', '', 'a'));
     }
 }
