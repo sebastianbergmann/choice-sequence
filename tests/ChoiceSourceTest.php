@@ -57,6 +57,18 @@ final class ChoiceSourceTest extends TestCase
         $this->assertSame($choices, $source->sequence()->choices());
     }
 
+    public function testCountsTheChoicesItDraws(): void
+    {
+        $source = ChoiceSource::random(new Randomizer(new Xoshiro256StarStar(1)));
+
+        $this->assertSame(0, $source->numberOfChoices());
+
+        $source->draw(1000, new UniformDistribution);
+        $source->draw(1000, new UniformDistribution);
+
+        $this->assertSame(2, $source->numberOfChoices());
+    }
+
     public function testDrawsTheSameChoicesForTheSameSeed(): void
     {
         $first  = ChoiceSource::random(new Randomizer(new Xoshiro256StarStar(42)));

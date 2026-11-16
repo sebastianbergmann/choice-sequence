@@ -85,6 +85,19 @@ final class ChoiceTreeTest extends TestCase
         $this->assertFalse($node->draws(1));
     }
 
+    public function testHasOneNodeForTheSameChoiceAfterTheSameChoices(): void
+    {
+        $tree = new ChoiceTree;
+        $root = $tree->root();
+
+        $this->assertNotNull($root);
+
+        $child = $this->child($tree, $root, 0);
+
+        $this->assertSame($child, $tree->child($root, 0));
+        $this->assertNotSame($child, $tree->child($root, 1));
+    }
+
     public function testIsNoLongerUsedWhenItWouldHaveTooManyNodes(): void
     {
         $tree = new ChoiceTree(2);

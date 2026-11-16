@@ -12,9 +12,11 @@ namespace SebastianBergmann\ChoiceSequence;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Small;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 
 #[CoversClass(ChoiceSequence::class)]
+#[UsesClass(Span::class)]
 #[Small]
 final class ChoiceSequenceTest extends TestCase
 {
@@ -41,6 +43,20 @@ final class ChoiceSequenceTest extends TestCase
     public function testChoiceSequencesAreOrderedShortlex(bool $expected, array $choices, array $otherChoices): void
     {
         $this->assertSame($expected, new ChoiceSequence($choices)->isSimplerThan(new ChoiceSequence($otherChoices)));
+    }
+
+    public function testHasChoicesAndSpans(): void
+    {
+        $span     = new Span(0, 2, 'label', null);
+        $sequence = new ChoiceSequence([3, 0], [$span]);
+
+        $this->assertSame([3, 0], $sequence->choices());
+        $this->assertSame([$span], $sequence->spans());
+    }
+
+    public function testHasNoSpansUnlessItIsGivenSome(): void
+    {
+        $this->assertSame([], new ChoiceSequence([3, 0])->spans());
     }
 
     public function testHasTheLargestChoiceThatEachChoiceCouldHaveBeen(): void
