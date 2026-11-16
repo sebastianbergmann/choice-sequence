@@ -11,6 +11,7 @@ namespace SebastianBergmann\ChoiceSequence;
 
 use function count;
 use function min;
+use Random\IntervalBoundary;
 use Random\Randomizer;
 
 /**
@@ -55,7 +56,9 @@ final readonly class WeightedRangesDistribution implements Distribution
             return $randomizer->getInt(0, $maximum);
         }
 
-        $selector = $randomizer->nextFloat() * $totalWeight;
+        // scaling a float from the interval [0, 1) to this interval would
+        // not draw every float of this interval with the same probability
+        $selector = $randomizer->getFloat(0.0, $totalWeight, IntervalBoundary::ClosedOpen);
 
         // rounding errors may leave the selector slightly above zero after
         // the weights of all ranges have been subtracted from it
