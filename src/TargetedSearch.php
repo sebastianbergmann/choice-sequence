@@ -28,7 +28,9 @@ use Random\Randomizer;
  * For each label, the search climbs from the choice sequence of the example
  * with the highest score: it changes one choice of the sequence at a time,
  * first to larger and then to smaller choices, and doubles the change for as
- * long as the score increases. The choices are changed in a random order.
+ * long as the score increases. A choice is not changed to a larger choice
+ * than the largest choice that it could have been, when the choice sequence
+ * knows it. The choices are changed in a random order.
  * Once no change to any of the choices increased the score, the example is
  * a local maximum, and the search for the label ends, until an example with
  * an even higher score is checked. The climbs of the labels take turns.
@@ -240,8 +242,16 @@ final class TargetedSearch
             }
 
             if ($state['direction'] === 1) {
-                // a choice cannot be larger than the largest integer
-                $choice = $choices[$index] + min($state['change'], PHP_INT_MAX - $choices[$index]);
+                // a choice cannot be larger than the largest integer, and a
+                // choice source replays a choice that is larger than the
+                // largest choice that it could have been as that choice
+                $maximum = $state['sequence']->maximumAt($index);
+
+                if ($maximum === null) {
+                    $maximum = PHP_INT_MAX;
+                }
+
+                $choice = $choices[$index] + min($state['change'], max(0, $maximum - $choices[$index]));
             } else {
                 $choice = max(0, $choices[$index] - $state['change']);
             }

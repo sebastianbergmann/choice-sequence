@@ -125,6 +125,33 @@ final class TargetedSearchTest extends TestCase
         $this->assertSame([PHP_INT_MAX - 1], $this->choices($search->nextCandidate()));
     }
 
+    public function testDoesNotChangeAChoiceToAChoiceLargerThanTheLargestChoiceThatItCouldHaveBeen(): void
+    {
+        $search = $this->search();
+
+        $search->exampleChecked(new ChoiceSequence([5], [], [10]), ['score' => 5]);
+
+        $this->assertSame([6], $this->choices($search->nextCandidate()));
+
+        $search->exampleChecked(new ChoiceSequence([6], [], [10]), ['score' => 6]);
+
+        $this->assertSame([8], $this->choices($search->nextCandidate()));
+
+        $search->exampleChecked(new ChoiceSequence([8], [], [10]), ['score' => 8]);
+
+        $this->assertSame([10], $this->choices($search->nextCandidate()));
+    }
+
+    public function testDoesNotChangeAChoiceThatIsTheLargestChoiceThatItCouldHaveBeenToALargerChoice(): void
+    {
+        $search = $this->search();
+
+        $search->exampleChecked(new ChoiceSequence([1], [], [1]), ['score' => 0]);
+
+        // a choice source would replay a larger choice as the same example
+        $this->assertSame([0], $this->choices($search->nextCandidate()));
+    }
+
     public function testDoesNotDoubleTheChangeBeyondTheLargestInteger(): void
     {
         $search = $this->search();
