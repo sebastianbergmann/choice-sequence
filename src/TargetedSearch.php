@@ -9,11 +9,15 @@
  */
 namespace SebastianBergmann\ChoiceSequence;
 
+use const PHP_INT_MAX;
 use function array_key_exists;
 use function array_shift;
 use function array_slice;
+use function assert;
 use function count;
+use function intdiv;
 use function max;
+use function min;
 use function range;
 use Random\Randomizer;
 
@@ -129,7 +133,7 @@ final class TargetedSearch
                 // the climb goes on in the same direction with a larger change
                 $labels[$label]['score']     = $score;
                 $labels[$label]['sequence']  = $sequence;
-                $labels[$label]['change']    = 2 * $labels[$label]['change'];
+                $labels[$label]['change']    = self::doubled($labels[$label]['change']);
                 $labels[$label]['increased'] = true;
 
                 $candidateIncreasedItsScore = true;
@@ -235,7 +239,14 @@ final class TargetedSearch
                 continue;
             }
 
-            $choice = max(0, $choices[$index] + $state['direction'] * $state['change']);
+            if ($state['direction'] === 1) {
+                // a choice cannot be larger than the largest integer
+                $choice = $choices[$index] + min($state['change'], PHP_INT_MAX - $choices[$index]);
+            } else {
+                $choice = max(0, $choices[$index] - $state['change']);
+            }
+
+            assert($choice >= 0);
 
             if ($choice === $choices[$index]) {
                 $state = self::changeNextChoice($state);
@@ -261,6 +272,20 @@ final class TargetedSearch
         }
 
         return $this->randomizer->shuffleArray(range(0, $numberOfChoices - 1));
+    }
+
+    /**
+     * @param positive-int $change
+     *
+     * @return positive-int twice the change, as far as it is not larger than the largest integer
+     */
+    private static function doubled(int $change): int
+    {
+        if ($change > intdiv(PHP_INT_MAX, 2)) {
+            return PHP_INT_MAX;
+        }
+
+        return 2 * $change;
     }
 
     /**

@@ -9,6 +9,7 @@
  */
 namespace SebastianBergmann\ChoiceSequence;
 
+use const PHP_INT_MAX;
 use function sort;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Small;
@@ -112,6 +113,35 @@ final class TargetedSearchTest extends TestCase
         $search->exampleChecked(new ChoiceSequence([1]), ['score' => -1]);
 
         $this->assertNull($search->nextCandidate());
+    }
+
+    public function testDoesNotChangeAChoiceToAChoiceLargerThanTheLargestInteger(): void
+    {
+        $search = $this->search();
+
+        $search->exampleChecked(new ChoiceSequence([PHP_INT_MAX]), ['score' => 0]);
+
+        // the choice cannot be changed to a larger choice
+        $this->assertSame([PHP_INT_MAX - 1], $this->choices($search->nextCandidate()));
+    }
+
+    public function testDoesNotDoubleTheChangeBeyondTheLargestInteger(): void
+    {
+        $search = $this->search();
+
+        $search->exampleChecked(new ChoiceSequence([0]), ['score' => 0]);
+
+        // the change is doubled until the choice is the largest integer
+        for ($score = 1; $score <= 63; $score++) {
+            $candidate = $search->nextCandidate();
+
+            $this->assertNotNull($candidate);
+
+            $search->exampleChecked($candidate, ['score' => $score]);
+        }
+
+        $this->assertSame([['label' => 'score', 'highestScore' => 63]], $search->highestScores());
+        $this->assertSame([PHP_INT_MAX - 1], $this->choices($search->nextCandidate()));
     }
 
     public function testARejectedCandidateDoesNotIncreaseTheScore(): void
