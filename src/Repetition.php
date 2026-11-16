@@ -72,6 +72,10 @@ final readonly class Repetition
     private ?int $maximumSize;
     private BernoulliDistribution $anotherElement;
     private ExactDistribution $certainlyAnotherElement;
+
+    /**
+     * @var float<0, 1>
+     */
     private float $probabilityOfAimingForMaximumSize;
 
     /**
@@ -80,9 +84,10 @@ final readonly class Repetition
     private string $label;
 
     /**
-     * @param non-empty-string  $label       the label of the spans of the elements (see Label)
+     * @param non-empty-string  $label                       the label of the spans of the elements (see Label)
      * @param non-negative-int  $minimumSize
-     * @param ?non-negative-int $maximumSize
+     * @param ?non-negative-int $maximumSize                 not smaller than the minimum size, null when the collection has no maximum size
+     * @param float<0, 1>       $probabilityOfAnotherElement
      */
     public function __construct(string $label, int $minimumSize, ?int $maximumSize, float $probabilityOfAnotherElement = self::DEFAULT_PROBABILITY_OF_ANOTHER_ELEMENT)
     {
@@ -195,13 +200,22 @@ final readonly class Repetition
      *
      * @param non-negative-int  $minimumSize
      * @param ?non-negative-int $maximumSize
+     * @param float<0, 1>       $probabilityOfAnotherElement
+     *
+     * @return float<0, 1>
      */
     private static function probabilityOfAimingForMaximumSize(int $minimumSize, ?int $maximumSize, float $probabilityOfAnotherElement): float
     {
-        // without a maximum size, there is nothing to aim for, and aiming
-        // for it only affects the choices before the one for the element
-        // that reaches the maximum size
-        if ($maximumSize === null || $minimumSize >= $maximumSize - 1) {
+        // without a maximum size, there is nothing to aim for
+        if ($maximumSize === null) {
+            return 0.0;
+        }
+
+        $largestNumberOfElementsThatAreAdded = $maximumSize - $minimumSize;
+
+        // aiming for the maximum size only affects the choices before the
+        // one for the element that reaches the maximum size
+        if ($largestNumberOfElementsThatAreAdded < 2) {
             return 0.0;
         }
 
@@ -215,7 +229,7 @@ final readonly class Repetition
 
         return min(
             self::MAXIMUM_PROBABILITY_OF_AIMING_FOR_MAXIMUM_SIZE,
-            self::GROWTH_OF_MEAN_SIZE * $meanSize / ($maximumSize - $minimumSize),
+            self::GROWTH_OF_MEAN_SIZE * $meanSize / $largestNumberOfElementsThatAreAdded,
         );
     }
 }

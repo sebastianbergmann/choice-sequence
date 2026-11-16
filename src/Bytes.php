@@ -40,7 +40,7 @@ final readonly class Bytes
 
     /**
      * @param non-negative-int  $minimumLength
-     * @param ?non-negative-int $maximumLength
+     * @param ?non-negative-int $maximumLength not smaller than the minimum length, null when the string has no maximum length
      */
     public function __construct(int $minimumLength, ?int $maximumLength)
     {

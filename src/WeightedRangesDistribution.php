@@ -25,12 +25,12 @@ use Random\Randomizer;
 final readonly class WeightedRangesDistribution implements Distribution
 {
     /**
-     * @var non-empty-list<array{weight: float, minimum: non-negative-int, maximum: non-negative-int}>
+     * @var non-empty-list<array{weight: finite-float&non-negative-float, minimum: non-negative-int, maximum: non-negative-int}>
      */
     private array $ranges;
 
     /**
-     * @param non-empty-list<array{weight: float, minimum: non-negative-int, maximum: non-negative-int}> $ranges
+     * @param non-empty-list<array{weight: finite-float&non-negative-float, minimum: non-negative-int, maximum: non-negative-int}> $ranges the minimum of a range is not larger than its maximum
      */
     public function __construct(array $ranges)
     {
