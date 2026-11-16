@@ -8,7 +8,7 @@ Library for drawing, replaying, shrinking, and storing choice sequences.
 
 A choice sequence is the list of non-negative integers from which a value was generated: whenever the code that generates the value has to decide something, such as the length of a list or the next character of a string, it draws a choice, and 0 stands for the simplest option. Replaying the same choices generates the same value, so a value can be made simpler by making its choice sequence simpler: shorter, or lexicographically smaller.
 
-This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected. It also draws the collections, binary strings, and references to values whose choices tools have to tell apart.
+This library provides the choice sequence, the drawing and replaying of choices, and the shrinker that searches for the simplest choice sequence that still fails in the same way, independent of how values are generated from the choices and of how a failure is detected. It also draws the collections, binary strings, strings of Unicode characters, and references to values whose choices tools have to tell apart.
 
 ## Installation
 
@@ -93,7 +93,7 @@ use SebastianBergmann\ChoiceSequence\SpanKind;
 $source->startSpan(Label::of('bytes', '0', '4096'), SpanKind::Bytes);
 ```
 
-### Collections, binary strings, and pools of values
+### Collections, strings, and pools of values
 
 The encodings that the kinds of spans describe are implemented by this library, so that every tool that uses it draws these values in the same way.
 
@@ -132,7 +132,22 @@ $string = $bytes->draw($source);
 $source->endSpan();
 ```
 
-`choicesFor()` tells the choices from which a collection or a binary string is drawn, to replay a value that was not generated, the content of a file, for instance:
+`Characters` draws the characters of a string of Unicode characters this way, each as the index of its code point in the order of `CodePoints`, and tells the label of the span of the string:
+
+```php
+use SebastianBergmann\ChoiceSequence\Characters;
+use SebastianBergmann\ChoiceSequence\SpanKind;
+
+$characters = new Characters(0, 100);
+
+$source->startSpan($characters->label(), SpanKind::Characters);
+
+$string = $characters->draw($source);
+
+$source->endSpan();
+```
+
+`choicesFor()` tells the choices from which a collection, a binary string, or a string of Unicode characters is drawn, to replay a value that was not generated, the content of a file, for instance:
 
 ```php
 use SebastianBergmann\ChoiceSequence\Bytes;

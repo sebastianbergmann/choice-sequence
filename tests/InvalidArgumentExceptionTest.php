@@ -32,4 +32,9 @@ final class InvalidArgumentExceptionTest extends TestCase
             InvalidArgumentException::minimumOfRangeLargerThanMaximum(5, 3)->getMessage(),
         );
     }
+
+    public function testTellsThatAStringIsNotValidUtf8(): void
+    {
+        $this->assertSame('The string is not valid UTF-8', InvalidArgumentException::stringNotValidUtf8()->getMessage());
+    }
 }

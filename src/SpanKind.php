@@ -59,6 +59,8 @@ enum SpanKind: string
      *
      * A character can be inserted where a choice decides whether there is
      * another character, as a byte can be inserted into a binary string.
+     *
+     * Characters draws the characters of a string this way.
      */
     case Characters = 'characters';
 

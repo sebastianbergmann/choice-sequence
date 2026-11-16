@@ -48,6 +48,11 @@ final class InvalidArgumentException extends \InvalidArgumentException implement
         );
     }
 
+    public static function stringNotValidUtf8(): self
+    {
+        return new self('The string is not valid UTF-8');
+    }
+
     private function __construct(string $message)
     {
         parent::__construct($message);
