@@ -115,21 +115,24 @@ final readonly class Repetition
                 $source->startSpan($this->label, SpanKind::Element);
             }
 
-            if ($size >= $this->minimumSize) {
-                if ($aimsForMaximumSize === null) {
-                    $aimsForMaximumSize = $this->aimsForMaximumSize($source);
+            // the span is ended when a choice cannot be drawn as well, so
+            // that the code that draws the collection ends its own span,
+            // and not this one, when it ends a span then
+            try {
+                if ($size >= $this->minimumSize) {
+                    if ($aimsForMaximumSize === null) {
+                        $aimsForMaximumSize = $this->aimsForMaximumSize($source);
+                    }
+
+                    if ($source->draw(1, $this->anotherElement($size, $aimsForMaximumSize)) === 0) {
+                        return;
+                    }
                 }
 
-                if ($source->draw(1, $this->anotherElement($size, $aimsForMaximumSize)) === 0) {
-                    $source->endSpan();
-
-                    return;
-                }
+                $added = $element();
+            } finally {
+                $source->endSpan();
             }
-
-            $added = $element();
-
-            $source->endSpan();
 
             if ($added) {
                 $size++;

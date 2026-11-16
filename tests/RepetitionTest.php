@@ -28,6 +28,7 @@ use Random\Randomizer;
 #[UsesClass(ChoiceSource::class)]
 #[UsesClass(ExactDistribution::class)]
 #[UsesClass(Span::class)]
+#[UsesClass(TooManyChoicesException::class)]
 #[UsesClass(TooManyDuplicateElementsException::class)]
 #[UsesClass(UniformDistribution::class)]
 #[Small]
@@ -70,6 +71,36 @@ final class RepetitionTest extends TestCase
                 [0, 1, 'element', SpanKind::RequiredElement],
                 [1, 3, 'element', SpanKind::Element],
                 [3, 4, 'element', SpanKind::Element],
+            ],
+            $spans,
+        );
+    }
+
+    public function testEndsTheSpanOfAnElementThatCannotBeDrawn(): void
+    {
+        $source = ChoiceSource::replay(new ChoiceSequence([5, 6]), 2);
+
+        $source->startSpan('collection');
+
+        try {
+            $this->elements(new Repetition('element', 3, null), $source);
+        } catch (TooManyChoicesException) {
+        } finally {
+            // ends the span of the collection, and not the one of the element
+            $source->endSpan();
+        }
+
+        $spans = [];
+
+        foreach ($source->sequence()->spans() as $span) {
+            $spans[] = [$span->start(), $span->end(), $span->label()];
+        }
+
+        $this->assertSame(
+            [
+                [0, 2, 'collection'],
+                [0, 1, 'element'],
+                [1, 2, 'element'],
             ],
             $spans,
         );
