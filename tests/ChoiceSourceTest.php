@@ -299,6 +299,28 @@ final class ChoiceSourceTest extends TestCase
         $this->assertNull($source->suggest(['candidate'], 1.0));
     }
 
+    public function testSuggestsEachIntegerOfTheRangeWhileChoicesAreDrawnAtRandom(): void
+    {
+        $source      = ChoiceSource::random(new Randomizer(new Xoshiro256StarStar(1)));
+        $suggestions = [];
+
+        for ($i = 0; $i < 100; $i++) {
+            $suggestions[] = $source->suggestInteger(-1, 2);
+        }
+
+        sort($suggestions);
+
+        $this->assertSame([-1, 0, 1, 2], array_values(array_unique($suggestions)));
+        $this->assertSame([], $source->sequence()->choices());
+    }
+
+    public function testDoesNotSuggestAnIntegerWhileASequenceIsReplayed(): void
+    {
+        $source = ChoiceSource::replay(new ChoiceSequence([]));
+
+        $this->assertNull($source->suggestInteger(1, 10));
+    }
+
     public function testDoesNotDrawTheChoicesOfAnExampleThatWasGeneratedBefore(): void
     {
         $randomizer = new Randomizer(new Xoshiro256StarStar(1));
