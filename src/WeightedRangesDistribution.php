@@ -15,8 +15,10 @@ use Random\Randomizer;
 
 /**
  * Selects one of the given ranges of choices according to its weight and
- * draws a choice from it uniformly. Ranges that start above the maximum
- * are ignored, and ranges that extend beyond it are cut off.
+ * draws a choice from it uniformly. Ranges that start above the maximum and
+ * ranges without a weight are ignored, and ranges that extend beyond the
+ * maximum are cut off. When no range is left, the choice is drawn uniformly
+ * from all choices up to the maximum.
  *
  * @no-named-arguments Parameter names are not covered by the backward compatibility promise for sebastian/choice-sequence
  */
@@ -41,7 +43,7 @@ final readonly class WeightedRangesDistribution implements Distribution
         $totalWeight = 0.0;
 
         foreach ($this->ranges as $range) {
-            if ($range['minimum'] > $maximum) {
+            if ($range['minimum'] > $maximum || $range['weight'] <= 0.0) {
                 continue;
             }
 

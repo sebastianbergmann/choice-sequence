@@ -114,6 +114,26 @@ final class WeightedRangesDistributionTest extends TestCase
         $this->assertSame([0, 1, 2, 3, 4, 5], array_values(array_unique(self::sorted($samples))));
     }
 
+    public function testSamplesUniformlyWhenNoRangeThatDoesNotStartAboveTheMaximumHasAWeight(): void
+    {
+        $distribution = new WeightedRangesDistribution(
+            [
+                ['weight' => 1.0, 'minimum' => 50, 'maximum' => 59],
+                ['weight' => 0.0, 'minimum' => 2, 'maximum' => 3],
+            ],
+        );
+
+        $randomizer = new Randomizer(new Xoshiro256StarStar(1));
+
+        $samples = [];
+
+        for ($i = 0; $i < 100; $i++) {
+            $samples[] = $distribution->sample($randomizer, 5);
+        }
+
+        $this->assertSame([0, 1, 2, 3, 4, 5], array_values(array_unique(self::sorted($samples))));
+    }
+
     /**
      * @param list<int> $samples
      *
