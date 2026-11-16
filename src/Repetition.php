@@ -168,6 +168,50 @@ final readonly class Repetition
     }
 
     /**
+     * The choices from which repeat() draws a collection with the given
+     * elements: the choices of the elements that the minimum size requires,
+     * then, for each other element, the choice 1 followed by the choices of
+     * the element, and, unless the collection has its maximum size, the
+     * choice 0 that ends it.
+     *
+     * Elements beyond the maximum size are left out. When there are fewer
+     * elements than the minimum size requires, the choices are replayed as a
+     * collection whose other required elements are drawn from choices that
+     * are 0, as the choices beyond the end of a choice sequence are.
+     *
+     * @param list<list<non-negative-int>> $elements the choices of each element, in order
+     *
+     * @return list<non-negative-int>
+     */
+    public function choicesFor(array $elements): array
+    {
+        $choices = [];
+        $size    = 0;
+
+        foreach ($elements as $element) {
+            if ($this->maximumSize !== null && $size >= $this->maximumSize) {
+                break;
+            }
+
+            if ($size >= $this->minimumSize) {
+                $choices[] = 1;
+            }
+
+            foreach ($element as $choice) {
+                $choices[] = $choice;
+            }
+
+            $size++;
+        }
+
+        if ($size >= $this->minimumSize && ($this->maximumSize === null || $size < $this->maximumSize)) {
+            $choices[] = 0;
+        }
+
+        return $choices;
+    }
+
+    /**
      * Decides, when choices are drawn at random, whether the collection whose
      * elements are about to be drawn aims for its maximum size. No choice is
      * drawn for this.

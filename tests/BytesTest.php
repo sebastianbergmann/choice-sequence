@@ -44,6 +44,29 @@ final class BytesTest extends TestCase
         new Bytes(3, 2);
     }
 
+    public function testTellsTheChoicesFromWhichABinaryStringIsDrawn(): void
+    {
+        $bytes   = new Bytes(1, null);
+        $choices = $bytes->choicesFor("a\x00\xFF");
+
+        $this->assertSame([0x61, 1, 0x00, 1, 0xFF, 0], $choices);
+        $this->assertSame("a\x00\xFF", $bytes->draw(ChoiceSource::replay(new ChoiceSequence($choices))));
+        $this->assertSame([0], new Bytes(0, 10)->choicesFor(''));
+    }
+
+    public function testTheChoicesOfABinaryStringThatIsLongerThanTheMaximumLengthAreTheOnesOfTheStringCutOff(): void
+    {
+        $this->assertSame([1, 0x61, 1, 0x62], new Bytes(0, 2)->choicesFor('abc'));
+        $this->assertSame([1, 0x61, 1, 0x62], new Bytes(0, 2)->choicesFor('ab'));
+    }
+
+    public function testTheChoicesOfABinaryStringThatIsShorterThanTheMinimumLengthAreReplayedAsTheStringFollowedByZeroBytes(): void
+    {
+        $bytes = new Bytes(3, null);
+
+        $this->assertSame("a\x00\x00", $bytes->draw(ChoiceSource::replay(new ChoiceSequence($bytes->choicesFor('a')))));
+    }
+
     public function testDrawsTheBytesThatTheMinimumLengthRequiresAsTheirValueAndEveryOtherByteAfterTheChoiceToAddIt(): void
     {
         $source = ChoiceSource::replay(new ChoiceSequence([0x61, 1, 0x00, 1, 0xFF, 0]));

@@ -132,6 +132,22 @@ $string = $bytes->draw($source);
 $source->endSpan();
 ```
 
+`choicesFor()` tells the choices from which a collection or a binary string is drawn, to replay a value that was not generated, the content of a file, for instance:
+
+```php
+use SebastianBergmann\ChoiceSequence\Bytes;
+use SebastianBergmann\ChoiceSequence\ChoiceSequence;
+use SebastianBergmann\ChoiceSequence\ChoiceSource;
+
+$bytes = new Bytes(0, 4096);
+
+// [1, 71, 1, 73, 1, 70, 0]
+$choices = $bytes->choicesFor('GIF');
+
+// 'GIF'
+$string = $bytes->draw(ChoiceSource::replay(new ChoiceSequence($choices)));
+```
+
 `Pool` holds the values that choices refer to, the values that the steps of a state machine produce and that later steps take, for instance. It marks a value that is added with a span of the kind `SpanKind::Referable`, and draws a reference to a value, its position counted from the value that was added last, in a span of the kind `SpanKind::Reference` or `SpanKind::ConsumingReference`:
 
 ```php

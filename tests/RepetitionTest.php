@@ -114,6 +114,46 @@ final class RepetitionTest extends TestCase
         );
     }
 
+    public function testTellsTheChoicesFromWhichACollectionWithTheGivenElementsIsDrawn(): void
+    {
+        $repetition = new Repetition('element', 2, null);
+        $choices    = $repetition->choicesFor([[5], [6], [7], [8]]);
+
+        $this->assertSame([5, 6, 1, 7, 1, 8, 0], $choices);
+        $this->assertSame([5, 6, 7, 8], $this->elements($repetition, ChoiceSource::replay(new ChoiceSequence($choices))));
+    }
+
+    public function testTheChoicesOfACollectionThatHasItsMaximumSizeDoNotEndWithTheChoiceThatEndsACollection(): void
+    {
+        $this->assertSame([1, 5, 1, 6], new Repetition('element', 0, 2)->choicesFor([[5], [6]]));
+        $this->assertSame([5, 6], new Repetition('element', 2, 2)->choicesFor([[5], [6]]));
+    }
+
+    public function testTheChoicesOfACollectionDoNotHoldTheElementsBeyondItsMaximumSize(): void
+    {
+        $this->assertSame([1, 5, 1, 6], new Repetition('element', 0, 2)->choicesFor([[5], [6], [7]]));
+    }
+
+    public function testTheChoicesOfACollectionWithoutElementsAreTheChoiceThatEndsIt(): void
+    {
+        $this->assertSame([0], new Repetition('element', 0, null)->choicesFor([]));
+        $this->assertSame([], new Repetition('element', 0, 0)->choicesFor([]));
+    }
+
+    public function testTheChoicesOfACollectionWithFewerElementsThanItsMinimumSizeRequiresAreReplayedWithElementsThatAreDrawnFromTheChoiceZero(): void
+    {
+        $repetition = new Repetition('element', 3, null);
+        $choices    = $repetition->choicesFor([[5]]);
+
+        $this->assertSame([5], $choices);
+        $this->assertSame([5, 0, 0], $this->elements($repetition, ChoiceSource::replay(new ChoiceSequence($choices))));
+    }
+
+    public function testTheChoicesOfACollectionHoldEveryChoiceOfAnElement(): void
+    {
+        $this->assertSame([3, 4, 1, 5, 6, 0], new Repetition('element', 1, null)->choicesFor([[3, 4], [5, 6]]));
+    }
+
     public function testDoesNotDrawAChoiceToAddAnotherElementWhenTheCollectionHasItsMaximumSize(): void
     {
         $source = ChoiceSource::replay(new ChoiceSequence([1, 5, 1, 6, 1, 7]));
