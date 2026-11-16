@@ -9,7 +9,6 @@
  */
 namespace SebastianBergmann\ChoiceSequence;
 
-use function count;
 use function min;
 use Random\IntervalBoundary;
 use Random\Randomizer;
@@ -60,16 +59,19 @@ final readonly class WeightedRangesDistribution implements Distribution
         // not draw every float of this interval with the same probability
         $selector = $randomizer->getFloat(0.0, $totalWeight, IntervalBoundary::ClosedOpen);
 
-        // rounding errors may leave the selector slightly above zero after
-        // the weights of all ranges have been subtracted from it
-        $selected = $ranges[count($ranges) - 1];
+        // the weights are added up in the order in which they were added up
+        // for the total weight, so that the last sum is the total weight
+        // exactly, which the selector is less than: subtracting the weights
+        // from the selector instead can leave it at zero or slightly above
+        // because of rounding errors, so that no range would be selected
+        $selected         = $ranges[0];
+        $cumulativeWeight = 0.0;
 
         foreach ($ranges as $range) {
-            $selector -= $range['weight'];
+            $selected = $range;
+            $cumulativeWeight += $range['weight'];
 
-            if ($selector < 0.0) {
-                $selected = $range;
-
+            if ($selector < $cumulativeWeight) {
                 break;
             }
         }

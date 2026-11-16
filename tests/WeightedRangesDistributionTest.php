@@ -15,6 +15,7 @@ use function sort;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Small;
 use PHPUnit\Framework\TestCase;
+use Random\Engine;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
@@ -59,6 +60,32 @@ final class WeightedRangesDistributionTest extends TestCase
 
         // one in four samples is drawn from the range of the second weight
         $this->assertEqualsWithDelta(1000, $ones, 100);
+    }
+
+    public function testSamplesFromTheLastRangeWhenTheFloatThatSelectsARangeIsTheLargestOneBelowTheTotalWeight(): void
+    {
+        $distribution = new WeightedRangesDistribution(
+            [
+                ['weight' => 0.1, 'minimum' => 0, 'maximum' => 0],
+                ['weight' => 0.2, 'minimum' => 1, 'maximum' => 1],
+                ['weight' => 0.3, 'minimum' => 2, 'maximum' => 2],
+            ],
+        );
+
+        // the largest float below the total weight is drawn when no bit
+        // that the engine generates is set, and it is not below zero after
+        // these weights have been subtracted from it
+        $randomizer = new Randomizer(
+            new class implements Engine
+            {
+                public function generate(): string
+                {
+                    return "\x00\x00\x00\x00\x00\x00\x00\x00";
+                }
+            },
+        );
+
+        $this->assertSame(2, $distribution->sample($randomizer, 2));
     }
 
     public function testSamplesFromARangeThatStartsAtTheMaximum(): void
