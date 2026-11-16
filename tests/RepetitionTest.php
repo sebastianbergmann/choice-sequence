@@ -27,6 +27,7 @@ use Random\Randomizer;
 #[UsesClass(ChoiceSequence::class)]
 #[UsesClass(ChoiceSource::class)]
 #[UsesClass(ExactDistribution::class)]
+#[UsesClass(InvalidArgumentException::class)]
 #[UsesClass(Span::class)]
 #[UsesClass(TooManyChoicesException::class)]
 #[UsesClass(TooManyDuplicateElementsException::class)]
@@ -74,6 +75,13 @@ final class RepetitionTest extends TestCase
             ],
             $spans,
         );
+    }
+
+    public function testCannotHaveAMaximumSizeThatIsSmallerThanItsMinimumSize(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new Repetition('element', 3, 2);
     }
 
     public function testEndsTheSpanOfAnElementThatCannotBeDrawn(): void

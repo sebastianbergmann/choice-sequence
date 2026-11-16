@@ -31,9 +31,17 @@ final readonly class WeightedRangesDistribution implements Distribution
 
     /**
      * @param non-empty-list<array{weight: finite-float&non-negative-float, minimum: non-negative-int, maximum: non-negative-int}> $ranges the minimum of a range is not larger than its maximum
+     *
+     * @throws InvalidArgumentException when the minimum of a range is larger than its maximum
      */
     public function __construct(array $ranges)
     {
+        foreach ($ranges as $range) {
+            if ($range['minimum'] > $range['maximum']) {
+                throw InvalidArgumentException::minimumOfRangeLargerThanMaximum($range['minimum'], $range['maximum']);
+            }
+        }
+
         $this->ranges = $ranges;
     }
 

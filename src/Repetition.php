@@ -88,9 +88,15 @@ final readonly class Repetition
      * @param non-negative-int  $minimumSize
      * @param ?non-negative-int $maximumSize                 not smaller than the minimum size, null when the collection has no maximum size
      * @param float<0, 1>       $probabilityOfAnotherElement
+     *
+     * @throws InvalidArgumentException when the maximum size is smaller than the minimum size
      */
     public function __construct(string $label, int $minimumSize, ?int $maximumSize, float $probabilityOfAnotherElement = self::DEFAULT_PROBABILITY_OF_ANOTHER_ELEMENT)
     {
+        if ($maximumSize !== null && $maximumSize < $minimumSize) {
+            throw InvalidArgumentException::maximumSizeSmallerThanMinimumSize($minimumSize, $maximumSize);
+        }
+
         $this->label                             = $label;
         $this->minimumSize                       = $minimumSize;
         $this->maximumSize                       = $maximumSize;

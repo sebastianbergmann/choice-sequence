@@ -14,12 +14,14 @@ use function array_values;
 use function sort;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Small;
+use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
 use Random\Engine;
 use Random\Engine\Xoshiro256StarStar;
 use Random\Randomizer;
 
 #[CoversClass(WeightedRangesDistribution::class)]
+#[UsesClass(InvalidArgumentException::class)]
 #[Small]
 final class WeightedRangesDistributionTest extends TestCase
 {
@@ -40,6 +42,18 @@ final class WeightedRangesDistributionTest extends TestCase
             $this->assertGreaterThanOrEqual(10, $choice);
             $this->assertLessThanOrEqual(19, $choice);
         }
+    }
+
+    public function testCannotHaveARangeWhoseMinimumIsLargerThanItsMaximum(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new WeightedRangesDistribution(
+            [
+                ['weight' => 1.0, 'minimum' => 0, 'maximum' => 1],
+                ['weight' => 1.0, 'minimum' => 5, 'maximum' => 3],
+            ],
+        );
     }
 
     public function testSamplesFromEachRangeInProportionToItsWeight(): void

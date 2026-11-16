@@ -23,6 +23,7 @@ use Random\Randomizer;
 #[UsesClass(ChoiceSequence::class)]
 #[UsesClass(ChoiceSource::class)]
 #[UsesClass(ExactDistribution::class)]
+#[UsesClass(InvalidArgumentException::class)]
 #[UsesClass(Label::class)]
 #[UsesClass(Repetition::class)]
 #[UsesClass(Span::class)]
@@ -34,6 +35,13 @@ final class BytesTest extends TestCase
     {
         $this->assertSame(Label::of('bytes', '0', '4096'), new Bytes(0, 4096)->label());
         $this->assertSame(Label::of('bytes', '2', 'NULL'), new Bytes(2, null)->label());
+    }
+
+    public function testCannotHaveAMaximumLengthThatIsSmallerThanItsMinimumLength(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        new Bytes(3, 2);
     }
 
     public function testDrawsTheBytesThatTheMinimumLengthRequiresAsTheirValueAndEveryOtherByteAfterTheChoiceToAddIt(): void
