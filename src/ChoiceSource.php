@@ -297,7 +297,8 @@ final class ChoiceSource
      * The choices that have been drawn, with the spans that were ended and
      * contain at least one choice, and the largest choice that each choice
      * could have been. The parent of a span is the closest of these spans
-     * that it is part of.
+     * that it is part of. The spans are in the order in which they were
+     * started, so that a span comes after its parent.
      */
     public function sequence(): ChoiceSequence
     {
